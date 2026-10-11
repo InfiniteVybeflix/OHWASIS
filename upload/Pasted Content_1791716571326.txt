@@ -1,0 +1,1198 @@
+OHWASIS — MASTER PRODUCT, ARCHITECTURE, IMPLEMENTATION, SECURITY & DELIVERY PROMPT
+
+1. Your role and mission
+
+Act as an elite principal software architect, senior full-stack engineer, SaaS product strategist, e-commerce systems engineer, UI/UX designer, database architect, DevSecOps engineer, application security specialist, QA engineer, and technical writer.
+
+Your mission is to research, architect, build, secure, test, document, and deliver OHWASIS as a genuinely working, production-oriented, multi-tenant commerce SaaS platform.
+
+Do not treat this as a simple website, landing page, UI prototype, or single-business online shop.
+
+OHWASIS is intended to become the shared infrastructure through which many independent businesses can create, operate, and customize their own online storefronts without accessing one another's data.
+
+Official working identity
+
+Name: OHWASIS
+Pronunciation: oh-WAH-sis
+Expansion: One Hosted Web Architecture Serving Isolated Storefronts.
+
+Core principle: One shared platform. Independent businesses. Isolated data. Customizable storefronts. Reliable commerce.
+
+Suggested brand statement: Every business deserves its own space to grow.
+
+The name and brand are supplied product requirements. Do not rename the platform or replace its identity without a compelling, documented technical or legal reason.
+
+Do not assume the name, domain, or trademark has been legally cleared. Document this as a launch consideration.
+
+2. Non-negotiable development rules
+
+These rules apply to the entire repository, every phase, every integration, every user interface, and every final deliverable.
+
+1. No fake buttons, placeholder functionality, hardcoded demonstrations, "any", TODOs, or simulated success states. Every implemented feature must actually work.
+2. Do not create dead links, decorative controls pretending to work, fake dashboards, invented analytics, mocked payment success, fabricated customer records presented as real, or buttons that only display success messages without performing the underlying operation.
+3. Do not leave stubs, incomplete implementations, temporary workarounds, empty handlers, unfinished pages, disabled features disguised as active features, or placeholder API responses.
+4. Do not use TypeScript "any", including disguised forms of it. Enable strict typing. Do not bypass type checking with unjustified casts, "@ts-ignore", "@ts-nocheck", or equivalent suppressions.
+5. Do not leave TODO, FIXME, HACK, or equivalent unfinished-work markers in delivered application code.
+6. Do not claim a feature works merely because it compiles or its interface renders. Verify the actual end-to-end behavior.
+7. Do not hardcode secrets, administrator passwords, payment credentials, tenant-specific settings, fake API keys, or production URLs that should be configurable.
+8. Do not embed a particular merchant's branding, catalogue, prices, addresses, payment credentials, delivery rules, or business assumptions in reusable application logic.
+9. Do not put source files, lengthy code, or project files directly into the conversation as a substitute for creating them in the repository.
+10. Do not replace working functionality with simplified implementations just to finish quickly. Understand existing code before modifying it.
+11. Do not silently remove features, migrations, routes, dependencies, integrations, or existing user data.
+12. Do not report tests, security checks, integrations, or deployments as successful unless the relevant checks were actually performed and their results support that claim.
+13. Do not commit secrets or copy a real ".env" file into the final ZIP.
+14. Do not stop after producing a plan, design, scaffold, or partial application. Continue through all required implementation phases until the defined completion criteria are satisfied, subject to available tools and execution limits.
+
+If a feature cannot be implemented or verified because a genuine external dependency, credential, account, permission, or service is unavailable, document the exact limitation. Do not fake its behavior or describe it as production-ready.
+
+3. Inspect the existing project first
+
+Before changing files, inspect the complete available repository.
+
+Determine:
+
+- Existing framework, runtime, package manager, and dependency versions.
+- Application structure, routes, layouts, components, and styling system.
+- Database schema, migrations, indexes, constraints, and existing records.
+- Authentication, sessions, authorization, and roles.
+- API routes, server actions, middleware, and backend services.
+- Payment, email, AI, storage, analytics, and other integrations.
+- Current environment variable requirements.
+- Vercel configuration and deployment assumptions.
+- Git branches, existing modifications, repository conventions, and working features.
+- Existing tests, linting, type checking, build scripts, and CI workflows.
+- Current security weaknesses and technical debt.
+
+Preserve good existing work. Reuse suitable components and established patterns. Refactor where necessary, but do not blindly rewrite the project or change its technology stack without evidence.
+
+If no existing project is available, create a clean, maintainable project appropriate for the requirements below.
+
+Before implementation, produce a concise internal or repository-based assessment of the existing state, risks, and intended architecture.
+
+4. Research before making architectural decisions
+
+Perform genuine, current research. Use official documentation, maintained repositories, credible security guidance, technical postmortems, and real customer or developer experiences.
+
+Do not restrict research to the references below. Discover other relevant products and sources independently.
+
+Commerce engines and implementation approaches
+
+Study at least:
+
+- Medusa: https://docs.medusajs.com/
+- Medusa architecture: https://docs.medusajs.com/learn/introduction/architecture
+- Saleor: https://docs.saleor.io/
+- Saleor repository: https://github.com/saleor/saleor
+
+Compare these with relevant alternatives such as established open-source commerce frameworks, managed commerce platforms, and the existing project's current stack.
+
+Investigate:
+
+- Product and variant modelling.
+- Pricing, inventory, carts, checkout, and order lifecycles.
+- Payment provider extensibility.
+- Merchant-specific configuration and storefront customization.
+- Multi-tenant architecture and its actual limitations.
+- Admin capabilities and customization.
+- API design, webhooks, background work, and event processing.
+- Vercel compatibility and any separate runtime or infrastructure requirements.
+- Hosting cost, operational complexity, licensing, security maintenance, and upgrades.
+- How difficult it would be to support many independent merchants.
+- What must be extended, replaced, or built separately.
+
+Do not assume Medusa or Saleor provides secure multi-tenancy automatically. Verify the actual isolation model.
+
+Choose the most appropriate architecture based on evidence, project constraints, security, maintainability, and long-term cost. Reuse a mature commerce engine if it materially improves reliability. Do not reinvent established order, inventory, or payment workflows without a justified reason.
+
+If an engine is unsuitable for Vercel or the intended operating model, document why and select a practical alternative.
+
+Security and multi-tenancy research
+
+Study:
+
+- PostgreSQL row-level security: https://www.postgresql.org/docs/current/ddl-rowsecurity.html
+- OWASP Cheat Sheet Series: https://cheatsheetseries.owasp.org/
+- OWASP guidance relevant to authorization, authentication, sessions, secrets, input validation, file uploads, logging, and SSRF.
+- OWASP's current multi-tenant security guidance, including its Multi-Tenant Security Cheat Sheet where available.
+- Supabase security, RLS, Auth, Storage, database functions, connection pooling, and service-role documentation.
+- Vercel environment variables, deployment protection, security, domains, and serverless execution constraints.
+
+Investigate real multi-tenant vulnerabilities and cross-tenant data leakage incidents. Understand how insecure tenant context, missing authorization, privileged database clients, background jobs, cached responses, and file storage policies lead to failures.
+
+SaaS competitive and failure analysis
+
+Research a representative selection of successful and unsuccessful commerce SaaS products, multi-store platforms, marketplace products, and merchant management systems.
+
+Investigate products such as Shopify, WooCommerce, Wix, BigCommerce, Squarespace Commerce, and other relevant systems. Examine documented customer complaints, developer discussions, incident reports, security advisories, product limitations, migration difficulties, and operational weaknesses.
+
+Do not assume a product is insecure or unsuccessful merely because users complain. Separate documented facts from user opinions and your own conclusions.
+
+Create a research report in the repository that answers:
+
+1. What do existing platforms do well?
+2. What repeatedly frustrates merchants and customers?
+3. Where do pricing, extensibility, onboarding, customization, integrations, or platform lock-in become problematic?
+4. What security, availability, or data-isolation failures have been documented?
+5. Which failures are relevant to OHWASIS?
+6. What specific design or implementation decisions will prevent or reduce those failures?
+7. What trade-offs remain unavoidable?
+
+Include source links, access dates, concise findings, and the design decisions each finding influences.
+
+Do not copy competitors' proprietary assets or code. Learn from their documented strengths and weaknesses.
+
+Required architecture decision record
+
+Before implementing the core, document:
+
+- Selected architecture and why it was chosen.
+- Alternatives evaluated.
+- Technology and hosting constraints.
+- Multi-tenant isolation strategy.
+- Database and authentication model.
+- Commerce engine decision.
+- Payment integration model.
+- AI provider architecture.
+- Custom-domain strategy.
+- Background job and webhook strategy.
+- Security assumptions and residual risks.
+- Features deliberately deferred to later releases.
+
+Do the research and document the decision, then proceed with implementation. Do not stop after research and ask me to approve every routine technical choice.
+
+5. Define and implement the product in complete phases
+
+You choose the number, boundaries, and order of implementation phases after examining the repository and completing the initial research.
+
+Choose phases that make engineering sense. Each phase must produce a coherent, tested result rather than disconnected fragments.
+
+Create a phase plan with:
+
+- Objectives.
+- Dependencies.
+- Deliverables.
+- Acceptance criteria.
+- Tests required.
+- Risks and mitigations.
+
+Maintain a persistent progress record in the repository, such as "IMPLEMENTATION_STATUS.md", containing completed phases, verification evidence, remaining work, and any blocked external integrations.
+
+A phase is complete only when its functionality is implemented, its relevant tests pass, and its documentation is updated.
+
+Continue through all phases without waiting for unnecessary approval between ordinary engineering tasks.
+
+The final project ZIP must not be created until every required phase has been completed and the final acceptance checks have passed.
+
+Do not package an incomplete project and label it final.
+
+6. Product architecture and tenant boundaries
+
+OHWASIS must support many independent businesses using a shared platform.
+
+The architecture should distinguish three product layers.
+
+A. Platform operating system
+
+The platform operator manages the overall service, merchant onboarding, platform settings, approved integrations, support operations, platform security, and platform-wide health.
+
+B. Merchant operating system
+
+Each merchant has an independent control panel for their storefront, products, orders, customers, payment configuration, delivery rules, branding, content, AI settings, staff, and business settings.
+
+C. Customer commerce experience
+
+Customers can discover businesses, browse available products, create carts, check out, select supported payment methods, track orders, and manage their own accounts where applicable.
+
+Keep these layers distinct while sharing reusable services and carefully scoped data models.
+
+Required tenant isolation
+
+Use Supabase PostgreSQL as the primary database unless documented research identifies a compelling, technically necessary alternative.
+
+Design tenant isolation from the beginning. Do not bolt it on after building a single-merchant application.
+
+Consider a shared database with explicit tenant ownership, composite constraints where appropriate, and PostgreSQL RLS.
+
+Implement all necessary controls:
+
+- Every tenant-owned record must have an enforceable tenant relationship.
+- Related records must not be attachable to another tenant through manipulated IDs.
+- Establish trusted tenant context on the server.
+- Resolve storefront tenants using a verified hostname or authenticated membership as appropriate.
+- Never trust a client-provided "tenant_id" as sufficient authorization.
+- Enforce authorization in database policies and server-side application logic.
+- Prevent cross-tenant access through APIs, direct database access, joins, nested queries, search, exports, analytics, and file downloads.
+- Scope background jobs, scheduled tasks, webhooks, caches, and asynchronous processing correctly.
+- Prevent tenant data from leaking through error messages, logs, notifications, AI prompts, and shared caches.
+- Restrict platform-level cross-tenant access to explicitly authorized, audited operations.
+- Ensure database connection pooling and transaction-local tenant context cannot leak between requests.
+- Ensure privileged service-role access is never exposed to browsers and cannot silently bypass application authorization.
+- Restrict database functions and views appropriately.
+- Use foreign keys, indexes, transactions, and constraints to enforce integrity.
+
+Test attacks that deliberately substitute another tenant's IDs in requests, URLs, form fields, nested objects, uploads, exports, and API calls.
+
+A merchant must never be able to read or modify another merchant's products, customers, orders, payments, integrations, private media, credentials, staff, or analytics.
+
+A customer must never access another customer's private order or account information.
+
+7. Merchant onboarding and independent storefronts
+
+Build a real onboarding system so a business can create its own storefront without source-code modifications.
+
+A merchant should be able to:
+
+1. Register or receive an invitation.
+2. Verify their identity or email through the configured authentication process.
+3. Create a business profile.
+4. Choose an available storefront handle.
+5. Select an appropriate industry template.
+6. Configure branding, business details, contact information, policies, and navigation.
+7. Create categories, products, variants, and pricing.
+8. Configure supported payment methods.
+9. Configure fulfillment methods, delivery areas, and applicable charges.
+10. Configure their storefront theme and content.
+11. Preview and publish the storefront.
+12. Manage orders and business operations through their own control panel.
+
+Implement validation, duplicate-handle protection, onboarding state persistence, authorization, and error recovery.
+
+Do not require developers to edit application code whenever a merchant joins.
+
+Create a reusable capability-based architecture rather than a single hardcoded business model.
+
+Industry support
+
+Research the product requirements of multiple industries. Support an extensible foundation for:
+
+- Water and refill businesses.
+- Restaurants and food delivery.
+- Groceries and general retail.
+- Fashion and apparel.
+- Cosmetics and personal care.
+- Electronics and accessories.
+- Other suitable product-based businesses.
+
+Industry-specific capabilities should be implemented as typed, reusable modules or extensions.
+
+Examples:
+
+- Refill businesses may need container returns, deposits, refill sizes, and delivery instructions.
+- Restaurants may need modifiers, add-ons, preparation instructions, pickup, and preparation estimates.
+- Fashion may need sizes, colors, variant-specific stock, and variant images.
+- Groceries may need variable quantities, unit pricing, and availability rules.
+
+Do not impose water-specific, restaurant-specific, or other irrelevant fields on every merchant.
+
+If a capability is not yet implemented, do not advertise it as available. Build and test supported capabilities before exposing them.
+
+8. Storefronts, themes, CMS, and media
+
+Every merchant must have a configurable storefront.
+
+Implement:
+
+- Independent branding and color themes.
+- Responsive layouts.
+- Product listing and detail pages.
+- Search, filtering, sorting, and pagination.
+- Categories and navigation.
+- Product variants and image galleries.
+- Business information and contact methods.
+- Configurable business pages.
+- Delivery and payment information.
+- Privacy, returns, cancellation, and other applicable policy pages.
+- SEO metadata and social sharing metadata.
+- Accessible forms, navigation, and checkout.
+
+Functional content management system
+
+Provide a real merchant CMS with:
+
+- Page and section management.
+- Safe rich-text editing.
+- Reusable content blocks.
+- Draft, preview, publish, and unpublish workflows.
+- Version history and restoration.
+- Navigation management.
+- Media library and upload controls.
+- Responsive previews.
+- SEO fields.
+- Appropriate content permissions.
+- Safe HTML sanitization and upload validation.
+
+Publishing a page must change the actual public storefront. A draft must remain private.
+
+Do not build a fake drag-and-drop editor unless its underlying editing and publishing behavior genuinely works. Prefer a smaller, reliable editor over a visually impressive but nonfunctional builder.
+
+9. Products, inventory, carts, and checkout
+
+Implement a real commerce lifecycle.
+
+Product catalogue
+
+Support, where applicable:
+
+- Categories and subcategories.
+- Products and variants.
+- Images and media.
+- SKU and barcode fields.
+- Prices and currency.
+- Stock and availability.
+- Search and filters.
+- Pagination.
+- Product status and visibility.
+- CSV import/export with validation and clear error reports.
+- Promotions and discounts.
+- Industry-specific attributes.
+- Merchant-scoped inventory.
+
+Every product edit must persist to the database and be reflected consistently in the storefront and authorized control panel.
+
+Cart and checkout
+
+Support a reliable customer journey:
+
+1. Browse storefronts.
+2. Select products and variants.
+3. Add items to a cart.
+4. Change quantities or remove items.
+5. Provide required customer and delivery details.
+6. Select an available fulfillment method.
+7. Select an eligible payment method.
+8. Review an accurate order summary.
+9. Submit the order.
+10. Receive an order reference and truthful order/payment status.
+11. View permitted order details and updates.
+
+Guest checkout should be supported where appropriate. Customer accounts should not be mandatory merely to browse.
+
+Validate all totals, quantities, prices, discounts, stock, delivery fees, and payment eligibility on the server. Never trust totals submitted by the browser.
+
+Use database transactions, idempotency, and suitable concurrency controls to prevent duplicate orders, overselling, and inconsistent order totals.
+
+Preserve valid customer input when recoverable errors occur.
+
+Make unavailable products, invalid quantities, unsupported delivery areas, and failed payments understandable to the customer.
+
+Orders and fulfillment
+
+Persist order records and order-item snapshots so historical orders remain accurate when product details or prices later change.
+
+Implement a coherent order lifecycle with validated state transitions, audit events, and appropriate authorization.
+
+Support the applicable features for:
+
+- Order search and filtering.
+- Order detail views.
+- Fulfillment status.
+- Delivery or pickup information.
+- Customer notifications.
+- Order exports.
+- Authorized cancellation and refunds.
+- Inventory adjustment.
+- Payment reconciliation.
+- Staff actions and audit history.
+
+Never allow a client to mark its own payment as verified or change a protected order status without authorization.
+
+10. Payments and merchant integrations
+
+Create an extensible payment-provider architecture. Merchants should be able to enable and configure the payment methods actually supported by the platform and their business.
+
+Research and prioritize suitable providers for the markets OHWASIS intends to serve, including Kenya.
+
+M-Pesa Daraja
+
+Implement a genuine Daraja integration using official Safaricom documentation and authorized credentials.
+
+Account for:
+
+- Environment selection and credentials.
+- Server-side payment initiation.
+- Correct merchant and transaction references.
+- Callback validation and correlation.
+- Idempotent callback handling.
+- Pending, successful, failed, expired, and uncertain outcomes.
+- Timeouts, duplicate callbacks, and delayed confirmation.
+- Reconciliation and support diagnostics.
+- Safe handling of provider errors.
+- Tenant-specific configuration where supported and operationally appropriate.
+
+Never collect or store an M-Pesa PIN.
+
+Never treat a successful HTTP response from an initiation request as proof of completed payment.
+
+Never treat a customer redirect or confirmation page as payment evidence.
+
+Only mark a payment paid after authoritative verification under the provider's documented process.
+
+Additional payment methods
+
+Research and architect support for relevant providers, potentially including card processors, other mobile-money integrations, bank transfers, cash on delivery, and manual Till or Paybill verification where suitable eg through regex and owner verification.
+
+Do not list a provider as active merely because its name appears in a dropdown. A method must be genuinely implemented, configured, and eligible for the particular merchant and transaction.
+
+Manual payment instructions must clearly distinguish payment initiation from payment verification.
+
+Provide transparent payment statuses, transaction references, error handling, reconciliation, and an audit trail.
+
+Merchant integration settings
+
+Provide a secure area in the merchant control panel for authorized administrators to configure supported integrations.
+
+Secrets must be:
+
+- Collected only over HTTPS.
+- Validated where the provider offers a safe validation mechanism.
+- Stored encrypted at rest using an appropriate key-management or secret-management design.
+- Decrypted only by authorized server-side integration code when required.
+- Masked in user interfaces and excluded from ordinary logs and exports.
+- Restricted by tenant and permission.
+- Rotatable and revocable.
+- Excluded from source control and client bundles.
+
+Do not hash and salt credentials that the application must later recover to call a provider. One-way hashes are appropriate for verification-only secrets; recoverable API credentials require encryption and protected key management.
+
+Never expose credentials to a browser, another tenant, an unauthorized staff member, an AI provider, or an analytics service.
+
+Document encryption-key rotation, secret replacement, and recovery procedures.
+
+11. AI integration ecosystem
+
+Build a provider-neutral AI integration layer so OHWASIS can use multiple AI services without coupling the entire platform to one vendor.
+
+Preferred provider: Aevibron Gateway
+
+Make Aevibron Gateway the recommended provider in the configuration experience.
+
+Use an environment-driven base URL, with the intended gateway endpoint configurable for the deployment. The current preferred chat endpoint is:
+
+"https://Aevibron-gateway.vercel.app/api/v1/chat" with the header X-Aevibron-Key: <your key> and authorisation barrier format for the others 
+
+Do not scatter or hardcode this URL throughout the codebase. Centralize configuration and allow deployment-specific overrides.
+
+Do not hardcode API keys or assume that the endpoint is publicly accessible without authentication.
+
+Other providers
+
+Research and architect suitable alternatives, potentially including OpenAI and other providers with compatible APIs or supported adapters.
+
+Support provider-specific models, capability checks, configuration validation, timeouts, errors, usage tracking where available, and cost controls.
+
+Do not present an unsupported model as available. Do not silently route private merchant or customer data to a third-party provider.
+
+AI features
+
+Research which AI capabilities would genuinely improve merchant and customer workflows. Suitable candidates include:
+
+- Product-description assistance.
+- Content drafting and rewriting.
+- Search assistance.
+- Catalogue categorization.
+- Merchant support assistance.
+- Order and sales summaries based on authorized data.
+- Storefront content assistance.
+- Customer support workflows with explicit data-access controls.
+
+Prioritize a small number of complete, valuable features rather than exposing numerous unfinished AI buttons.
+
+Enforce tenant and user permissions before retrieving information for AI prompts. Minimize sensitive data, document external data processing, and require explicit configuration for providers that receive business or customer data.
+
+Treat AI output as untrusted input. Never let generated content directly execute SQL, authorize refunds, alter payment states, change access permissions, or perform privileged operations without deterministic server-side validation and authorization.
+
+Requesting Aevibron API access
+
+Provide a real workflow through which an authorized merchant can request Aevibron API access from their control panel.
+
+The request should be stored as a durable record containing the requesting business, authorized requester, requested access, timestamp, status, and relevant audit information.
+
+The platform control panel must display and manage these requests, with suitable statuses, access controls, and audit history.
+
+The designated contact email is:
+
+"aevibron@gmail.com"
+
+Where a configured and tested email provider is available, deliver the request notification to that address. Record delivery outcomes when the provider supports them.
+
+If email delivery is not configured or fails, retain the request in the database and clearly communicate its status. Never claim an email was sent when it was not.
+
+Do not expose internal platform data to the requesting merchant or automatically grant API access without the required approval.
+
+12. Platform and merchant control panels
+
+Both control panels must be genuinely functional, independently authorized, and visually professional.
+
+Platform control panel
+
+Provide appropriate capabilities for:
+
+- Merchant and tenant management.
+- Merchant onboarding and suspension.
+- Platform-wide configuration.
+- Verified domain management.
+- Integration and provider configuration.
+- AI access requests.
+- Subscription or plan management if actually implemented.
+- Platform operational health.
+- Security events and audit logs.
+- Controlled support access.
+- Background job and webhook diagnostics.
+- Data retention and operational settings.
+
+Cross-tenant support operations must be explicitly authorized, scoped, and audited. Do not provide an unrestricted interface that casually exposes all customer records.
+
+Merchant control panel
+
+Provide appropriate capabilities for:
+
+- Business profile and storefront settings.
+- Products, variants, categories, and inventory.
+- Orders, fulfillment, and payment reconciliation.
+- Customers and permitted customer information.
+- Discounts and promotions.
+- CMS and media.
+- Themes and branding.
+- Delivery and pickup rules.
+- Payment providers.
+- AI providers and AI access requests.
+- Staff, roles, and permissions.
+- Domains.
+- Notifications.
+- Business analytics based on real persisted data.
+- Security settings and audit history.
+
+Implement the complete workflows behind each exposed control.
+
+Admin URL obscurity → get the name from environmental variables 
+
+Both the platform control panel and each merchant control panel must support configurable, non-obvious administrative routes.
+
+Research safe route-naming practices and provide useful recommendations. Avoid common, predictable administrative paths where configurable routing is practical.
+
+Generate sensible, collision-resistant route slugs and allow authorized administrators to change them safely.
+
+Changing an admin route must not break authentication, API authorization, callbacks, recovery flows, or tenant resolution.
+
+Do not treat obscurity as security. It must never replace authentication, server-side authorization, rate limiting, MFA where appropriate, monitoring, or audit logging.
+
+Do not expose privileged routes in public navigation, sitemaps, robots-accessible indexes, public metadata, or unnecessary error messages.
+
+Do not implement secret query parameters, hidden passwords, backdoors, undocumented bypass routes, or client-controlled authorization.
+
+If a user changes an admin route, invalidate stale route mappings appropriately, prevent collisions, and ensure that authorized users retain a secure recovery path.
+
+13. Authentication, roles, and access control
+
+Implement secure authentication using a suitable Supabase Auth architecture or a justified alternative.
+
+Support:
+
+- Registration and account verification where appropriate.
+- Secure login and logout.
+- Password recovery and change.
+- Session management and revocation.
+- Merchant membership.
+- Staff invitations.
+- Role assignment.
+- Immediate access removal when accounts are disabled.
+- Rate limiting and abuse protection.
+- Appropriate MFA for privileged accounts where practical.
+- Secure session and cookie handling.
+- Audit logging for sensitive operations.
+
+Use clear role boundaries, potentially including:
+
+- Platform operator.
+- Merchant owner.
+- Merchant administrator.
+- Order manager.
+- Catalogue manager.
+- Content editor.
+- Fulfillment staff.
+- Read-only analyst.
+- Customer.
+
+Only implement roles and permissions that have real, enforced behavior.
+
+Authorization must be enforced server-side and, where appropriate, at the database layer. Hiding a button is not authorization.
+
+Prevent horizontal and vertical privilege escalation, account takeover, insecure recovery, session fixation, and unauthorized account switching.
+
+14. Custom domains and tenant routing
+
+Support merchant subdomains and custom domains when the chosen hosting and DNS architecture can genuinely provide them.
+
+Examples are illustrative only; do not assume any domain is available.
+
+Implement or document:
+
+- Merchant handle validation.
+- Subdomain assignment.
+- Custom-domain ownership verification.
+- DNS verification.
+- Domain-to-tenant mapping.
+- Hostname normalization.
+- Duplicate and collision prevention.
+- HTTPS and certificate provisioning.
+- Canonical URLs and redirects.
+- Domain removal and reassignment.
+- Prevention of dangling-domain takeover.
+- Safe handling of forwarded-host headers.
+- Tenant-aware cache keys and request routing.
+
+Never trust an arbitrary incoming "Host" header as proof that a request belongs to a tenant.
+
+A text field accepting a custom domain is not a working custom-domain system. Verify the hosting provider's actual capabilities and document any required DNS, Vercel configuration, or external services.
+
+Do not claim that DNS, certificates, or domain verification work unless tested in a real authorized environment.
+
+15. Customer experience and future marketplace
+
+Build the current release around a genuinely working multi-merchant platform.
+
+Customers should be able to:
+
+- Visit a merchant storefront.
+- Browse its published catalogue.
+- Search and filter products.
+- View product variants, prices, and availability.
+- Use a cart and checkout.
+- Select an available payment and fulfillment method.
+- Receive truthful order status.
+- Access their own orders and account settings where supported.
+
+If customers can discover multiple merchants through a platform directory, ensure only published and eligible businesses appear.
+
+Architect the data model and service boundaries so the platform can evolve into a larger marketplace with shared customer identity, cross-merchant discovery, and potentially consolidated checkout.
+
+Do not implement a fake unified checkout that cannot correctly handle separate merchants, payment recipients, shipping, refunds, taxes, and order lifecycles.
+
+A unified consumer account, multi-merchant checkout, and wallet are separate product decisions. Design for future extensibility, but do not build a financial wallet or represent deferred features as working functionality.
+
+16. Data model and integrity
+
+Design a normalized, maintainable schema based on actual implementation needs.
+
+Expected concepts may include:
+
+- Tenants and business profiles.
+- Domains and tenant configuration.
+- Users, memberships, roles, and permissions.
+- Storefront themes and capabilities.
+- Pages, content revisions, and media.
+- Products, variants, categories, and inventory.
+- Prices, discounts, and promotions.
+- Carts and checkout sessions.
+- Customers and addresses.
+- Orders and historical order-item snapshots.
+- Fulfillment and order events.
+- Payments and payment attempts.
+- Provider configurations and encrypted credentials.
+- Delivery zones and fulfillment rules.
+- Notifications and delivery records.
+- AI provider configuration and access requests.
+- Webhook events and background jobs.
+- Audit records and security events.
+
+These are design candidates, not an instruction to create empty tables for appearances.
+
+Use proper constraints, foreign keys, uniqueness, indexes, migrations, transaction boundaries, and appropriate deletion policies.
+
+Maintain order and payment history consistently. Prevent duplicate transactions and invalid state transitions.
+
+Do not silently delete historical financial records or audit records when a merchant or customer account is removed. Implement an appropriate retention and deletion policy.
+
+17. Notifications and integrations
+
+Implement a provider-based notification architecture for email and other appropriate channels.
+
+Notifications may include:
+
+- Account verification and recovery.
+- Order confirmation.
+- Payment status.
+- Fulfillment updates.
+- Merchant order alerts.
+- Security notifications.
+- Integration health and administrative alerts.
+
+Use durable notification records, retry behavior where appropriate, deduplication, and observable delivery outcomes.
+
+Do not claim a notification was sent when it was merely queued or when the provider rejected it.
+
+WhatsApp integration, SMS, or other external channels must use authorized providers and credentials. If a channel is not configured, show an honest setup requirement rather than simulating delivery.
+
+Prevent notifications from exposing private information to unauthorized recipients or leaking data between tenants.
+
+18. Design and accessibility
+
+Create a refined, credible SaaS product identity for OHWASIS.
+
+The platform marketing site, platform control panel, merchant control panel, and storefronts should each have a coherent visual system and clear information hierarchy.
+
+Use a restrained, professional design with a distinctive identity. Avoid generic templates, excessive gradients, unnecessary animations, cluttered dashboards, and ornamental elements that reduce usability.
+
+The platform should feel premium without sacrificing clarity.
+
+Requirements:
+
+- Mobile-first and responsive layouts.
+- Strong Android browser usability.
+- Accessible keyboard navigation.
+- Visible focus states.
+- Sufficient contrast.
+- Clear loading, empty, success, and error states.
+- Reduced-motion support where relevant.
+- Consistent form validation.
+- Useful confirmations for destructive actions.
+- Efficient search and filtering.
+- Optimized images and assets.
+- Sensible loading and pagination behavior.
+- WCAG-conscious accessibility.
+- Clear separation between platform administration, merchant administration, and customer-facing storefronts.
+
+Do not add fake charts or fabricated performance statistics to make the interface look complete.
+
+19. Vercel, Supabase, and GitHub delivery architecture
+
+The intended infrastructure is:
+
+- Vercel: application hosting and suitable deployment services.
+- Supabase: PostgreSQL database, RLS, authentication and storage where appropriate.
+- GitHub: source control, reviewed changes, and CI workflows.
+
+Design around their actual limits and security models.
+
+Verify that the chosen framework, commerce engine, job-processing model, payment callbacks, and custom-domain strategy work with the target infrastructure.
+
+Do not assume persistent background workers, arbitrary long-running processes, or unsupported runtime features exist in Vercel serverless functions.
+
+Use appropriate external workers or managed services if necessary and document the added requirements.
+
+Implement:
+
+- Reproducible dependency installation.
+- Database migrations.
+- Type checking.
+- Linting.
+- Automated tests.
+- Production builds.
+- GitHub Actions CI where suitable.
+- Deployment-specific environment variables.
+- Secure webhook endpoints.
+- Error monitoring and structured logging.
+- Backup and recovery procedures.
+- Safe rollback and migration practices.
+
+Never require the user to expose Supabase service-role keys, payment secrets, or encryption keys in client-side variables.
+
+20. Comprehensive SETUP.md
+
+Create a detailed file named "SETUP.md" at the project root.
+
+This must be a practical, step-by-step installation and operating manual, not a short overview.
+
+Assume the reader needs explicit instructions and may be setting up the infrastructure for the first time.
+
+Document every necessary step in the correct order, including:
+
+Prerequisites
+
+- Required accounts.
+- Supported runtime and package manager versions.
+- Required CLI tools.
+- Required permissions.
+- External services.
+- Minimum configuration and operational requirements.
+
+GitHub setup
+
+- How to create or select the repository.
+- How to clone it.
+- How to install dependencies.
+- How to configure the default branch.
+- How to configure repository secrets and variables.
+- How to enable and run GitHub Actions.
+- How to interpret CI results.
+- How to safely commit and push changes.
+
+Supabase setup
+
+- How to create the project.
+- Where to find the project URL and relevant keys.
+- Which keys belong on the server and which, if any, are intended for public use.
+- How to configure authentication and callback URLs.
+- How to configure database access and RLS.
+- How to apply migrations in the correct order.
+- How to configure Storage buckets and policies if used.
+- How to create the initial platform operator securely.
+- How to configure backups and recovery.
+- How to inspect database errors and diagnose common failures.
+
+Never place real secrets in example commands or documentation.
+
+Vercel setup
+
+- How to import the GitHub repository.
+- How to configure the correct framework and build settings.
+- How to configure production, preview, and development environment variables.
+- How to connect Supabase safely.
+- How to deploy.
+- How to verify the deployment.
+- How to read build and runtime logs.
+- How to roll back a failed deployment.
+- How to configure domains and HTTPS.
+- How to distinguish preview deployments from production.
+
+Environment variables
+
+Provide a complete, accurate ".env.example" containing every required variable, with safe dummy values or empty values and explanations.
+
+For every variable, document:
+
+- Purpose.
+- Whether it is required.
+- Which environment uses it.
+- Whether it is public or secret.
+- Where to obtain it.
+- How to validate it.
+- Whether it requires restarting or redeploying the application.
+
+Do not invent variables that the code does not use, or omit variables required by the implementation.
+
+Application operations
+
+Explain step by step how to:
+
+- Start the project locally.
+- Apply and inspect migrations.
+- Bootstrap the first platform administrator.
+- Create a merchant.
+- Invite merchant staff.
+- Configure a storefront.
+- Add products and variants.
+- Publish CMS content.
+- Configure payment providers.
+- Verify payment callbacks.
+- Configure AI providers.
+- Request Aevibron API access.
+- Configure email and other notifications.
+- Configure custom domains.
+- Process and reconcile orders.
+- Review audit events.
+- Back up and restore the system.
+- Troubleshoot common failures.
+- Upgrade dependencies and apply future migrations.
+
+Security and production launch
+
+Include a launch checklist covering secrets, authentication, authorization, RLS, tenant isolation, payment callbacks, HTTPS, domains, rate limiting, logging, monitoring, backups, retention, and incident response.
+
+Document which tasks can be tested locally and which require live credentials or authorized production infrastructure.
+
+Every instruction must correspond to the actual code and current provider documentation. Verify commands and configuration against the implementation. Do not copy generic instructions that do not apply to this project.
+
+21. Security verification and vulnerability assessment
+
+Perform a genuine security assessment throughout development and again before final packaging.
+
+Do not simply write “secure” in the README.
+
+Authentication and authorization
+
+Test:
+
+- Unauthenticated access to protected endpoints.
+- Invalid and expired sessions.
+- Role escalation.
+- Cross-tenant object access.
+- Customer access to other customers' records.
+- Unauthorized administrative operations.
+- Disabled-account access.
+- Password recovery and session revocation.
+- Sensitive route and API discovery.
+- Rate limiting and abuse resistance.
+
+Database and Supabase
+
+Test:
+
+- RLS on every applicable tenant-owned table.
+- Anonymous and authenticated database access.
+- Cross-tenant SELECT, INSERT, UPDATE, and DELETE attempts.
+- Privileged server access and service-role boundaries.
+- Storage object policies.
+- SQL injection and unsafe dynamic queries.
+- Database functions and views.
+- Referential integrity and concurrent updates.
+- Tenant context under connection pooling.
+
+Application and API security
+
+Assess:
+
+- Injection and unsafe input handling.
+- XSS and content sanitization.
+- CSRF where applicable.
+- SSRF risks.
+- Open redirects.
+- Path traversal.
+- File upload abuse.
+- Broken object-level authorization.
+- Sensitive information exposure.
+- Insecure caching.
+- Weak cryptography.
+- Dependency vulnerabilities.
+- Security headers and CSP.
+- Webhook authenticity and replay handling.
+- Secret leakage in logs, errors, source maps, or client bundles.
+
+Commerce and payments
+
+Test:
+
+- Client-side price manipulation.
+- Negative or invalid quantities.
+- Discount abuse.
+- Stock races.
+- Duplicate order submission.
+- Duplicate or forged payment callbacks.
+- Unauthorized order cancellation.
+- Unauthorized refund operations.
+- Payment status manipulation.
+- Cross-tenant payment configuration access.
+- Replay and idempotency behavior.
+
+Tools and evidence
+
+Use appropriate static analysis, dependency audits, secret scanning, automated tests, and controlled dynamic testing. Review findings manually.
+
+Do not conduct destructive or unauthorized testing against third-party systems.
+
+Create a security assessment report documenting:
+
+- What was tested.
+- Tools and versions used.
+- Tests that passed and failed.
+- Findings by severity.
+- Evidence and reproduction steps for genuine findings.
+- Fixes applied.
+- Retests performed.
+- Remaining risks and limitations.
+
+Fix all confirmed critical and high-severity vulnerabilities before release. Address medium and low-severity issues according to their impact and document any that remain.
+
+Do not claim that no vulnerabilities exist anywhere. No finite test suite can prove that. State precisely what was verified, what was not tested, and what remains uncertain.
+
+22. Full-flow and regression testing
+
+Test complete user journeys, not only individual components.
+
+Merchant journey
+
+Registration or invitation → verification → business creation → handle selection → template selection → branding → product creation → payment configuration → publishing → order receipt → order processing → fulfillment → reconciliation.
+
+Customer journey
+
+Visit storefront → browse products → select variants → cart → edit quantities → enter customer details → choose fulfillment → choose payment → submit order → receive reference → observe accurate payment and order status → access permitted order information.
+
+Platform operator journey
+
+Secure login → create or approve merchant → assign ownership → review domain and integration status → review Aevibron access request → manage merchant status → inspect audit history.
+
+Security regression journey
+
+Attempt cross-tenant access through each applicable route, API, query, upload, export, cache, and asynchronous workflow.
+
+Additional quality checks
+
+- Responsive mobile and desktop behavior.
+- Accessible navigation and forms.
+- Empty states and error recovery.
+- Network failures and provider timeouts.
+- Concurrent order and inventory operations.
+- Database migrations from a clean database.
+- Repeated order submissions.
+- Webhook retries.
+- CI and production build.
+- Regression tests for existing working features.
+
+Use integration and end-to-end testing tools appropriate to the chosen stack. Use isolated test environments and explicitly seeded test data where needed.
+
+Test data must be clearly identified and isolated from live merchant data. Do not use a hardcoded demonstration backend to imitate production functionality.
+
+23. Performance, observability, and reliability
+
+Research and implement sensible production safeguards, including:
+
+- Appropriate database indexes.
+- Efficient pagination and queries.
+- Bounded search operations.
+- Safe caching with tenant-aware keys.
+- Timeouts and retries for external services.
+- Idempotent background processing.
+- Rate limiting and abuse controls.
+- Structured logs without secrets.
+- Error monitoring.
+- Operational health checks.
+- Webhook and job diagnostics.
+- Database backup and restoration procedures.
+- Safe schema migration and rollback strategies.
+
+Avoid speculative infrastructure and unnecessary microservices. Prefer a maintainable architecture that can evolve with real usage.
+
+Never cache private responses across tenant or user boundaries.
+
+24. Privacy, compliance, and operational policies
+
+Collect only data necessary for the product's actual workflows.
+
+Implement configurable privacy, retention, export, and deletion processes where appropriate.
+
+Consider Kenyan data-protection obligations and any additional jurisdictions the platform will serve. Research current official guidance and document areas requiring legal review.
+
+Do not claim legal or regulatory compliance merely because a policy page exists.
+
+Do not introduce a stored-value wallet, custody of customer funds, or other regulated financial functionality without a separate feasibility, compliance, and security assessment.
+
+Make business policies, delivery conditions, payment instructions, and applicable customer disclosures configurable.
+
+25. Documentation and repository deliverables
+
+Create and maintain the following documentation as applicable:
+
+- "SETUP.md" — complete setup and deployment guide.
+- "README.md" — project overview and quick navigation.
+- "ARCHITECTURE.md" — architecture and component boundaries.
+- "SECURITY.md" — security model and reporting process.
+- "IMPLEMENTATION_STATUS.md" — phase progress and verification evidence.
+- "RESEARCH.md" — competitor research, sources, and product lessons.
+- "SECURITY_AUDIT.md" — final security findings and retest evidence.
+- "OPERATIONS.md" — backup, recovery, monitoring, and incident procedures.
+- "PAYMENTS.md" — provider configuration, callbacks, reconciliation, and testing.
+- "ENVIRONMENT.md" or an equivalent section in "SETUP.md" — complete environment variable reference.
+
+Avoid duplicating contradictory instructions across files. Keep documentation consistent with the actual implementation.
+
+26. Final asset placement guide
+
+At the end of the project, clearly document where I should place the official OHWASIS logos, icons, favicons, and other brand assets.
+
+Prefer a sensible, documented structure such as:
+
+- "public/brand/" — primary and alternate brand marks.
+- "public/brand/logo.svg" — primary SVG logo, if supplied.
+- "public/brand/logo.png" — raster logo, if supplied.
+- "public/brand/icon.svg" — standalone brand icon, if supplied.
+- "public/favicon.ico" — browser favicon, if supplied.
+- "public/icons/" — additional interface or platform icons.
+- "public/images/" — genuine public images used by the application.
+
+Adjust this structure to the existing framework's conventions where necessary.
+
+Do not create fake official logos or use another business's identity. If the official OHWASIS assets have not been provided, use a coherent text-based brand treatment or a genuinely implemented, original CSS/SVG mark where appropriate; clearly explain how to replace it.
+
+Do not leave broken image references or require source-code changes to replace normal branding assets.
+
+Document exact filenames, dimensions or formats where relevant, asset replacement instructions, and how the assets are used by the storefront, admin interfaces, favicon, and metadata.
+
+27. Final full-project ZIP — mandatory delivery requirement
+
+Create one ZIP of the complete, finished project only after every implementation phase and final verification step is complete.
+
+The ZIP must contain all required project source files, relevant public assets, configuration templates, database migrations, tests, CI workflows, deployment configuration, and documentation.
+
+Include the package lockfile and other files necessary to reproduce the environment.
+
+Exclude:
+
+- "node_modules".
+- ".git" history and internal Git object storage.
+- Build artifacts and regenerable caches.
+- Local environment files containing secrets.
+- Real credentials, private keys, access tokens, and production customer data.
+- Temporary debugging files and unrelated artifacts.
+
+Include a safe ".env.example".
+
+Before delivery:
+
+1. Run the complete applicable lint, type-check, test, security-audit, migration, and production-build checks.
+2. Review the final implementation for unfinished work, fake controls, hardcoded tenant-specific logic, "any", TODOs, and simulated success.
+3. Verify that the ZIP can be opened and contains the expected files.
+4. Confirm that essential source, migrations, documentation, tests, and configuration templates are present.
+5. Confirm that no secrets or prohibited generated artifacts were included.
+6. Record the actual ZIP path and file size.
+7. Provide a concise delivery report with the verification results and any genuine limitations.
+
+Use a descriptive filename such as "ohwasis-complete.zip".
+
+Create the archive in the working environment using an actual file operation. Do not fabricate a download path or merely print a ZIP command and claim the archive exists.
+
+Do not create the final ZIP while any required phase remains incomplete or any release-blocking check remains unresolved.
+
+28. Tool limits, interruptions, and continuation
+
+If you approach a tool limit, execution limit, context limit, or other constraint before finishing:
+
+1. Stop before making changes that would leave files corrupted or the repository in an inconsistent state.
+2. Save the current work to the actual repository files.
+3. Update "IMPLEMENTATION_STATUS.md" with the completed work, current phase, exact remaining tasks, latest verification results, and the next actions.
+4. Preserve migrations, test results, research notes, and other relevant progress.
+5. Do not write source files directly into chat.
+6. Do not package incomplete work as the final deliverable.
+7. Do not claim completion.
+8. Tell me concisely that work paused because of the limit and ask me to say “continue.”
+
+When I say “continue,” inspect the repository and progress record, verify the actual state, and resume from the next unfinished task. Do not blindly repeat completed phases or assume previous operations succeeded without checking.
+
+Repeat this process as necessary until the project is complete.
+
+29. Definition of done
+
+The project is complete only when all applicable criteria below are satisfied:
+
+- [ ] Research and architecture decisions are documented.
+- [ ] OHWASIS branding is implemented coherently.
+- [ ] The core multi-tenant architecture is operational.
+- [ ] Tenant boundaries are enforced and tested.
+- [ ] Authentication and authorization work.
+- [ ] Platform and merchant control panels are independently protected.
+- [ ] Configurable administrative routes work without replacing real security controls.
+- [ ] Merchant onboarding works.
+- [ ] Storefronts can be configured without editing source code.
+- [ ] Products, variants, inventory, and CMS operations persist correctly.
+- [ ] Customer browsing, cart, and checkout work end to end.
+- [ ] Orders are persisted with accurate historical details.
+- [ ] Payment providers behave truthfully and securely.
+- [ ] Daraja integration is implemented and tested to the extent supported by authorized credentials.
+- [ ] AI provider configuration works, with Aevibron Gateway recommended.
+- [ ] Aevibron API access requests persist and appear in the platform control panel.
+- [ ] Notification behavior reflects actual provider outcomes.
+- [ ] Domain and tenant routing are verified or their external requirements are clearly documented.
+- [ ] No implemented controls are fake or disconnected from their underlying operations.
+- [ ] No "any", TODOs, stubs, unfinished placeholders, or simulated success states remain in delivered application code.
+- [ ] Database migrations work from a clean environment.
+- [ ] Relevant automated tests pass.
+- [ ] The production build succeeds.
+- [ ] Security testing is documented, confirmed release-blocking vulnerabilities are fixed, and unresolved risks are disclosed.
+- [ ] "SETUP.md" explains the real setup process step by step.
+- [ ] The asset placement guide identifies exactly where official logos and icons belong.
+- [ ] The repository contains the final documentation and progress record.
+- [ ] The complete project ZIP has been created and verified only after all phases have finished.
+- [ ] The final report accurately distinguishes implemented, tested, externally blocked, and deferred functionality.
+
+30. Final instruction
+
+Think beyond the obvious feature list. Research more, identify missing capabilities, study the failure modes of comparable products, and propose or implement additional features when they materially improve security, usability, reliability, merchant success, or customer trust.
+
+Use engineering judgment to avoid unnecessary complexity. A smaller number of complete, reliable features is preferable to a broad collection of incomplete ones.
+
+Do not ask me to make routine technical decisions that you can resolve through research. Ask a concise question only when an essential business decision cannot reasonably be inferred and making an assumption would risk substantial rework or security problems.
+
+Do not embed a particular customer's business as a permanent assumption in the architecture. The platform must be reusable across merchants and industries.
+
+Your responsibility is to finish the implementation, verify it honestly, document every necessary setup step, and deliver the complete project as a verified ZIP—not merely to describe how someone else could build it.
+
+Begin with repository inspection and research, establish the architecture and phase plan, then execute the phases in order until the definition of done is satisfied. If interrupted by tool limits, save progress to files and ask me to say “continue.”

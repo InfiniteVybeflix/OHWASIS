@@ -1,0 +1,699 @@
+// OHWASIS — Multi-tenant Commerce SaaS Schema
+// One Hosted Web Architecture Serving Isolated Storefronts.
+//
+// Tenant isolation is enforced at the application layer: every tenant-owned
+// table carries a `tenantId` column that is required on insert and is filtered
+// on every read. A helper `tenantScoped()` in `src/lib/tenant.ts` wraps Prisma
+// queries to enforce this consistently. This compensates for the absence of
+// PostgreSQL row-level security in the SQLite deployment target. See
+// ARCHITECTURE.md for the documented upgrade path to Supabase + RLS.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity, membership, authorization
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  passwordHash  String
+  name          String?
+  status        UserStatus    @default(ACTIVE)
+  mfaSecret     String?
+  // 0 = customer-only, 1 = merchant staff, 2 = platform operator
+  globalRole    Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  memberships   Membership[]
+  customerOf    Customer[]
+  auditEvents   AuditEvent[]
+  sessions      Session[]
+  aiAccessReqs  AiAccessRequest[]
+  notifications Notification[]
+
+  @@index([email])
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String   @unique
+  expiresAt    DateTime
+  ip           String?
+  userAgent    String?
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Membership {
+  id          String             @id @default(cuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId    String
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role        MerchantRole       @default(OWNER)
+  status      MembershipStatus   @default(ACTIVE)
+  invitedBy   String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}
+
+enum MerchantRole {
+  OWNER
+  ADMINISTRATOR
+  ORDER_MANAGER
+  CATALOG_MANAGER
+  CONTENT_EDITOR
+  FULFILLMENT_STAFF
+  ANALYST
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  REVOKED
+}
+
+// ---------------------------------------------------------------------------
+// Tenants (merchants)
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id                  String               @id @default(cuid())
+  handle              String               @unique
+  displayName         String
+  tagline             String?
+  description         String?
+  industry            String
+  status              TenantStatus         @default(PENDING)
+  // Stored as JSON-encoded TenantTheme object (kept small + safe).
+  theme               String?
+  contactEmail        String?
+  contactPhone        String?
+  // JSON-encoded Address { line1, line2, city, region, country, postalCode }.
+  address             String?
+  // Public-facing base URL once a custom domain is verified.
+  customDomain        String?
+  domainVerifiedAt    DateTime?
+  // Slug prefix used by the configurable admin route (see ADMIN_ROUTE_BASE env).
+  adminRouteSlug      String               @default(cuid())
+  // Industry-specific capabilities enabled for this tenant (JSON array of strings).
+  capabilities        String               @default("[]")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  memberships         Membership[]
+  categories          Category[]
+  products            Product[]
+  customers           Customer[]
+  orders              Order[]
+  carts               Cart[]
+  pages               Page[]
+  media               Media[]
+  paymentConfigs      PaymentProviderConfig[]
+  aiConfigs           AiProviderConfig[]
+  aiAccessRequests    AiAccessRequest[]
+  deliveryZones       DeliveryZone[]
+  discounts           Discount[]
+  auditEvents         AuditEvent[]
+  notifications       Notification[]
+  webhooks            WebhookEvent[]
+  staffInvites        StaffInvite[]
+
+  @@index([handle])
+}
+
+enum TenantStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+model StaffInvite {
+  id          String           @id @default(cuid())
+  tenantId    String
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email       String
+  role        MerchantRole     @default(CATALOG_MANAGER)
+  token       String           @unique
+  acceptedBy  String?
+  createdAt   DateTime         @default(now())
+  expiresAt   DateTime
+
+  @@index([tenantId, email])
+}
+
+// ---------------------------------------------------------------------------
+// Catalog: categories, products, variants, inventory, media
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  description String?
+  parentId    String?
+  parent      Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryParent")
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, parentId])
+}
+
+model Product {
+  id            String           @id @default(cuid())
+  tenantId      String
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId    String?
+  category      Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  name          String
+  slug          String
+  description   String?
+  status        ProductStatus    @default(DRAFT)
+  // JSON-encoded industry-specific attributes (e.g. refill sizes, fashion sizes, restaurant modifiers).
+  attributes    String           @default("{}")
+  // Optional base SKU for the product itself; variants carry their own SKUs.
+  sku           String?
+  barcode       String?
+  basePrice     Float
+  currency      String           @default("KES")
+  // Per-product inventory; variants may have their own stock when trackStockOnVariant=true.
+  stock         Int              @default(0)
+  trackStock    Boolean          @default(true)
+  trackStockOnVariant Boolean    @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  variants      Variant[]
+  images        ProductImage[]
+  orderItems    OrderItem[]
+  cartItems     CartItem[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, status])
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Variant {
+  id           String    @id @default(cuid())
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // Variant name like "500ml" or "Red / L"
+  name         String
+  sku          String?
+  priceDelta   Float     @default(0)
+  stock        Int       @default(0)
+  // JSON array like {"size":"L","color":"red"}
+  options      String    @default("{}")
+  weightGrams  Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
+
+  @@index([productId])
+}
+
+model ProductImage {
+  id          String   @id @default(cuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  mediaId      String?
+  url          String
+  altText      String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Media {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  url          String
+  filename     String
+  mimeType     String
+  sizeBytes    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// Customers, carts, checkout, orders
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email        String
+  name         String?
+  phone        String?
+  // JSON-encoded list of Address objects
+  addresses    String     @default("[]")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  orders       Order[]
+  carts        Cart[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model Cart {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId   String?
+  customer     Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  // Anonymous carts use a sessionKey
+  sessionKey   String?
+  items        CartItem[]
+  // JSON-encoded checkout draft (delivery address, method, payment method selection, etc.)
+  checkoutDraft String   @default("{}")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([tenantId])
+  @@index([sessionKey])
+}
+
+model CartItem {
+  id           String    @id @default(cuid())
+  cartId       String
+  cart         Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId    String?
+  variant      Variant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  quantity     Int
+  unitPrice    Float
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([cartId])
+  @@index([productId, variantId])
+}
+
+model Order {
+  id              String         @id @default(cuid())
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId      String?
+  customer        Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  // Anonymous checkout snapshot
+  guestEmail      String?
+  guestName       String?
+  guestPhone      String?
+  // Human-readable reference
+  reference       String         @unique
+  status          OrderStatus    @default(PENDING)
+  // JSON: { line1, line2, city, region, country, postalCode, notes }
+  shippingAddress String
+  fulfillmentMethod String
+  // JSON: { method, zoneId, fee, label }
+  fulfillment      String
+  // JSON: { method, provider, fee, label }
+  payment         String
+  subtotal        Float
+  fulfillmentFee   Float         @default(0)
+  paymentFee       Float         @default(0)
+  discountTotal   Float         @default(0)
+  total           Float
+  currency        String         @default("KES")
+  notes           String?
+  // Snapshot of items at order time
+  items           OrderItem[]
+  events          OrderEvent[]
+  payments        PaymentAttempt[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  OUT_FOR_DELIVERY
+  READY_FOR_PICKUP
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+model OrderItem {
+  id            String    @id @default(cuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tenantId      String
+  productId     String?
+  product       Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId     String?
+  variant       Variant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  name          String
+  variantName   String?
+  sku           String?
+  unitPrice     Float
+  quantity      Int
+  lineTotal     Float
+  // Snapshot of additional attributes at the moment of order
+  snapshot      String    @default("{}")
+
+  @@index([orderId])
+}
+
+model OrderEvent {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // CREATED, CONFIRMED, FULFILLMENT_STARTED, DELIVERED, CANCELLED, REFUNDED, NOTE, etc.
+  type        String
+  detail      String?
+  actorId     String?
+  actorName   String?
+  metadata    String   @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+model PaymentProviderConfig {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider      String
+  // Encrypted blob (AES-256-GCM base64). Decrypted only server-side by authorized code.
+  encryptedConfig String
+  // Masked preview fields for UI display (never the real secret)
+  displayName   String
+  enabled       Boolean  @default(false)
+  // Environment: sandbox or production for this provider
+  environment   String   @default("sandbox")
+  // Last 4 of consumer key / phone number etc., used in masked display
+  maskedHint    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+}
+
+model PaymentAttempt {
+  id            String         @id @default(cuid())
+  orderId       String
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tenantId      String
+  provider      String
+  // For M-Pesa STK: the CheckoutRequestID returned by Daraja
+  providerReference String?
+  // Internal reference we sent to the provider
+  merchantReference String
+  // Idempotency key on the way in (so duplicate callbacks for the same ref are merged)
+  idempotencyKey String?
+  amount        Float
+  currency      String         @default("KES")
+  status        PaymentStatus  @default(PENDING)
+  // Raw provider payload (sanitised of any PII we shouldn't store)
+  rawResponse   String?
+  // Last callback / verification payload (sanitised)
+  callbackPayload String?
+  failureReason String?
+  initiatedAt   DateTime       @default(now())
+  verifiedAt    DateTime?
+  updatedAt     DateTime       @updatedAt
+
+  @@index([orderId])
+  @@index([providerReference])
+  @@index([merchantReference])
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+// ---------------------------------------------------------------------------
+// CMS pages, content, navigation
+// ---------------------------------------------------------------------------
+
+model Page {
+  id           String       @id @default(cuid())
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slug         String
+  title        String
+  status       PageStatus   @default(DRAFT)
+  // Sanitised HTML body (sanitised server-side before save)
+  body         String       @default("")
+  // JSON-encoded SEO metadata { title, description, ogImage }
+  seo          String       @default("{}")
+  publishedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  revisions    PageRevision[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, status])
+}
+
+enum PageStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+}
+
+model PageRevision {
+  id          String   @id @default(cuid())
+  pageId      String
+  page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  body        String
+  title       String
+  editedBy    String?
+  createdAt   DateTime @default(now())
+
+  @@index([pageId])
+}
+
+// ---------------------------------------------------------------------------
+// Delivery zones, discounts
+// ---------------------------------------------------------------------------
+
+model DeliveryZone {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  // JSON: array of postal codes / area names covered
+  areas       String
+  fee         Float
+  // Optional minimum order amount required for this zone
+  minimumOrder Float?
+  estimatedMinutes Int?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, active])
+}
+
+model Discount {
+  id          String       @id @default(cuid())
+  tenantId     String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code        String
+  description String?
+  type        DiscountType
+  value       Float
+  // For PERCENTAGE: 0..100 ; for FLAT: amount in currency
+  minimumOrder Float?
+  startsAt    DateTime
+  endsAt      DateTime?
+  usageLimit  Int?
+  usedCount   Int          @default(0)
+  active      Boolean      @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT
+}
+
+// ---------------------------------------------------------------------------
+// AI providers, AI access requests
+// ---------------------------------------------------------------------------
+
+model AiProviderConfig {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider      String
+  // Encrypted blob (AES-256-GCM base64): includes apiKey, baseUrl, defaultModel
+  encryptedConfig String
+  displayName   String
+  enabled       Boolean  @default(false)
+  // Models list (JSON array) exposed to merchant UI
+  models        String   @default("[]")
+  maskedHint    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+}
+
+model AiAccessRequest {
+  id           String            @id @default(cuid())
+  tenantId     String
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy  String
+  user         User              @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+  provider     String
+  // What they are asking for (e.g. "production key", "higher rate limit")
+  requestedAccess String
+  justification String
+  status       AiAccessStatus    @default(PENDING)
+  // Decision notes set by platform operator
+  decisionNotes String?
+  decidedBy    String?
+  decidedAt    DateTime?
+  // True when an email notification was successfully delivered
+  emailDelivered Boolean         @default(false)
+  emailError   String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([tenantId, status])
+  @@index([status])
+}
+
+enum AiAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+// ---------------------------------------------------------------------------
+// Audit, notifications, webhooks
+// ---------------------------------------------------------------------------
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actorId     String?
+  user        User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action      String
+  // CREATE / UPDATE / DELETE / LOGIN / LOGOUT / PAYMENT_INITIATED / etc.
+  category    String
+  targetType  String?
+  targetId    String?
+  metadata    String   @default("{}")
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  channel     String   // EMAIL, SMS, WHATSAPP, IN_APP
+  // Template identifier, e.g. ORDER_CONFIRMATION, PAYMENT_RECEIVED
+  template    String
+  recipient   String
+  subject     String?
+  body        String
+  status      String   @default("PENDING") // PENDING, SENT, FAILED
+  providerMessageId String?
+  error       String?
+  createdAt   DateTime @default(now())
+  sentAt      DateTime?
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // The provider/source (e.g. mpesa-daraja, aevibron-ai, manual)
+  source      String
+  // Event type (e.g. STK_CALLBACK, AI_ACCESS_REQUEST, PAYMENT_VERIFIED)
+  type        String
+  // Idempotency key for the event (so duplicate callbacks collapse)
+  idempotencyKey String?
+  // Raw payload (sanitised)
+  payload     String
+  status      String   @default("RECEIVED") // RECEIVED, PROCESSED, FAILED
+  error       String?
+  createdAt   DateTime @default(now())
+  processedAt DateTime?
+
+  @@index([tenantId, source, type])
+  @@index([idempotencyKey])
+}
