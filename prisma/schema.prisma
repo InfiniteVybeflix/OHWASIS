@@ -1,12 +1,18 @@
-// OHWASIS — Multi-tenant Commerce SaaS Schema
-// One Hosted Web Architecture Serving Isolated Storefronts.
+// OHWASIS — Multi-tenant Commerce SaaS Schema (v2)
 //
-// Tenant isolation is enforced at the application layer: every tenant-owned
-// table carries a `tenantId` column that is required on insert and is filtered
-// on every read. A helper `tenantScoped()` in `src/lib/tenant.ts` wraps Prisma
-// queries to enforce this consistently. This compensates for the absence of
-// PostgreSQL row-level security in the SQLite deployment target. See
-// ARCHITECTURE.md for the documented upgrade path to Supabase + RLS.
+// Tenant isolation: enforced at application layer via `tenantScoped()` and
+// `assertTenantOwns()` (see src/lib/tenant.ts). Every tenant-owned table has
+// `tenantId`. In production on PostgreSQL/Supabase, enable RLS as well.
+//
+// v2 changes (per user review):
+// - User.accountType: CUSTOMER | BUSINESS_OWNER | PLATFORM_OPERATOR (set at signup)
+// - Tenant.openStatus + OpeningHours: shop open/closed state
+// - CustomerProfile: per-tenant saved customer details (auto-fill on checkout)
+// - Review: customer ratings/reviews on shops and products
+// - BusinessKnowledge: per-tenant knowledge base for AI
+// - AiDraft: AI-generated proposals awaiting owner approval (Approve/Edit/Retry/Cancel)
+// - AiAnswerLog: AI answers to customer questions, with owner feedback loop
+// - PaymentMethod: per-tenant multi-select of enabled payment methods (replaces single PaymentProviderConfig for simple methods)
 
 generator client {
   provider = "prisma-client-js"
@@ -28,25 +34,53 @@ model User {
   name          String?
   status        UserStatus    @default(ACTIVE)
   mfaSecret     String?
-  // 0 = customer-only, 1 = merchant staff, 2 = platform operator
+  // 0 = customer, 1 = business owner, 2 = platform operator
+  // accountType is the user's primary role; memberships can still grant staff access to tenants
+  accountType   AccountType   @default(CUSTOMER)
   globalRole    Int           @default(0)
+  // Customer profile (for customer-portal users — separate from per-tenant Customer records)
+  avatarUrl     String?
+  bio           String?
+  // Per-user preferences (JSON: { defaultDeliveryAddress, newsletterOptIn, ... })
+  preferences   String        @default("{}")
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   memberships   Membership[]
   customerOf    Customer[]
+  customerProfiles CustomerProfile[]
   auditEvents   AuditEvent[]
   sessions      Session[]
   aiAccessReqs  AiAccessRequest[]
   notifications Notification[]
+  reviews       Review[]
+  aiDrafts      AiDraft[]
+  aiAnswerFeedback AiAnswerFeedback[]
+  customerOrders Order[] @relation("CustomerOrders")
+  // v3 additions — customer activity
+  wishlist      WishlistItem[]
+  recentlyViewed RecentlyViewed[]
+  savedAddresses SavedAddress[]
+  coinBalance   CustomerCoinBalance?
+  coinTransactions CoinTransaction[]
+  referral      Referral?
+  // v4: Support system
+  supportTickets SupportTicket[]
 
   @@index([email])
+  @@index([accountType])
 }
 
 enum UserStatus {
   ACTIVE
   SUSPENDED
   DISABLED
+}
+
+enum AccountType {
+  CUSTOMER
+  BUSINESS_OWNER
+  PLATFORM_OPERATOR
 }
 
 model Session {
@@ -97,7 +131,7 @@ enum MembershipStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Tenants (merchants)
+// Tenants (businesses / shops)
 // ---------------------------------------------------------------------------
 
 model Tenant {
@@ -108,19 +142,25 @@ model Tenant {
   description         String?
   industry            String
   status              TenantStatus         @default(PENDING)
-  // Stored as JSON-encoded TenantTheme object (kept small + safe).
+  // OPEN now means the shop is open for orders; CLOSED means customers see a "closed" banner but may still submit orders
+  openStatus          ShopOpenStatus       @default(OPEN)
+  // Stored as JSON-encoded TenantTheme object
   theme               String?
   contactEmail        String?
   contactPhone        String?
-  // JSON-encoded Address { line1, line2, city, region, country, postalCode }.
+  // JSON-encoded Address
   address             String?
-  // Public-facing base URL once a custom domain is verified.
+  // Public-facing base URL once a custom domain is verified
   customDomain        String?
   domainVerifiedAt    DateTime?
-  // Slug prefix used by the configurable admin route (see ADMIN_ROUTE_BASE env).
+  // Slug prefix used by the configurable admin route (env-driven in v2)
   adminRouteSlug      String               @default(cuid())
-  // Industry-specific capabilities enabled for this tenant (JSON array of strings).
+  // Industry-specific capabilities enabled (JSON array)
   capabilities        String               @default("[]")
+  // Opening hours: JSON array of { day: 0-6, open: "09:00", close: "18:00", closed: false }
+  openingHours        String               @default("[]")
+  // Configuration for AI behaviour: JSON { tone, language, responseStyle }
+  aiConfig            String               @default("{}")
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -133,6 +173,7 @@ model Tenant {
   pages               Page[]
   media               Media[]
   paymentConfigs      PaymentProviderConfig[]
+  paymentMethods      PaymentMethod[]
   aiConfigs           AiProviderConfig[]
   aiAccessRequests    AiAccessRequest[]
   deliveryZones       DeliveryZone[]
@@ -141,8 +182,22 @@ model Tenant {
   notifications       Notification[]
   webhooks            WebhookEvent[]
   staffInvites        StaffInvite[]
+  // v2 additions
+  knowledgeBase       BusinessKnowledge[]
+  aiDrafts            AiDraft[]
+  aiAnswerLogs        AiAnswerLog[]
+  reviews             Review[]
+  customerProfiles    CustomerProfile[]
+  // v3 additions
+  wishlistItems       WishlistItem[]
+  recentlyViewed      RecentlyViewed[]
+  promotions          Promotion[]
+  // v4: Support system
+  supportTickets      SupportTicket[]
 
   @@index([handle])
+  @@index([status])
+  @@index([openStatus])
 }
 
 enum TenantStatus {
@@ -150,6 +205,12 @@ enum TenantStatus {
   ACTIVE
   SUSPENDED
   ARCHIVED
+}
+
+enum ShopOpenStatus {
+  OPEN
+  CLOSED
+  TEMPORARILY_CLOSED
 }
 
 model StaffInvite {
@@ -178,7 +239,7 @@ model Category {
   slug        String
   description String?
   parentId    String?
-  parent      Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  parent      Category? @relation("CategoryParent", fields: [parentId], references: [id])
   children    Category[] @relation("CategoryParent")
   sortOrder   Int       @default(0)
   createdAt   DateTime  @default(now())
@@ -200,14 +261,11 @@ model Product {
   slug          String
   description   String?
   status        ProductStatus    @default(DRAFT)
-  // JSON-encoded industry-specific attributes (e.g. refill sizes, fashion sizes, restaurant modifiers).
   attributes    String           @default("{}")
-  // Optional base SKU for the product itself; variants carry their own SKUs.
   sku           String?
   barcode       String?
   basePrice     Float
   currency      String           @default("KES")
-  // Per-product inventory; variants may have their own stock when trackStockOnVariant=true.
   stock         Int              @default(0)
   trackStock    Boolean          @default(true)
   trackStockOnVariant Boolean    @default(false)
@@ -218,6 +276,10 @@ model Product {
   images        ProductImage[]
   orderItems    OrderItem[]
   cartItems     CartItem[]
+  reviews       Review[]
+  // v3 additions
+  wishlistedBy  WishlistItem[]
+  recentlyViewedBy RecentlyViewed[]
 
   @@unique([tenantId, slug])
   @@index([tenantId, status])
@@ -233,12 +295,10 @@ model Variant {
   id           String    @id @default(cuid())
   productId    String
   product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  // Variant name like "500ml" or "Red / L"
   name         String
   sku          String?
   priceDelta   Float     @default(0)
   stock        Int       @default(0)
-  // JSON array like {"size":"L","color":"red"}
   options      String    @default("{}")
   weightGrams  Int?
   createdAt    DateTime  @default(now())
@@ -277,7 +337,7 @@ model Media {
 }
 
 // ---------------------------------------------------------------------------
-// Customers, carts, checkout, orders
+// Customers, customer profiles (saved details), carts, checkout, orders
 // ---------------------------------------------------------------------------
 
 model Customer {
@@ -289,7 +349,7 @@ model Customer {
   email        String
   name         String?
   phone        String?
-  // JSON-encoded list of Address objects
+  // JSON-encoded list of Address objects (legacy, kept for back-compat)
   addresses    String     @default("[]")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -301,16 +361,48 @@ model Customer {
   @@index([tenantId])
 }
 
+// Per-tenant customer profile: when a customer (User with accountType=CUSTOMER)
+// places an order at a tenant, their details (name, phone, default address)
+// are saved per-tenant. Each tenant sees only their own customer profile records
+// — never another tenant's customer data.
+//
+// A single user can have multiple CustomerProfile rows (one per tenant they've
+// ordered from). This enforces per-shop data isolation: tenant A cannot see
+// tenant B's customer profile for the same user.
+model CustomerProfile {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Cached display details (so the tenant dashboard can show "Jane Doe" without joining User)
+  displayName  String
+  email        String
+  phone        String?
+  // JSON-encoded default delivery address (auto-filled at checkout)
+  defaultAddress String  @default("{}")
+  // JSON-encoded list of recent addresses
+  savedAddresses String @default("[]")
+  // Tenant-private notes about this customer (only this tenant sees them)
+  notes       String?
+  // Whether the customer has opted into marketing from this tenant specifically
+  marketingOptIn Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+}
+
 model Cart {
   id           String     @id @default(cuid())
   tenantId     String
   tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customerId   String?
   customer     Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  // Anonymous carts use a sessionKey
   sessionKey   String?
   items        CartItem[]
-  // JSON-encoded checkout draft (delivery address, method, payment method selection, etc.)
   checkoutDraft String   @default("{}")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -342,19 +434,17 @@ model Order {
   tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customerId      String?
   customer        Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  // Anonymous checkout snapshot
+  // Customer user reference (for customer-portal order history)
+  customerUserId  String?
+  customerUser    User?    @relation("CustomerOrders", fields: [customerUserId], references: [id], onDelete: SetNull)
   guestEmail      String?
   guestName       String?
   guestPhone      String?
-  // Human-readable reference
   reference       String         @unique
   status          OrderStatus    @default(PENDING)
-  // JSON: { line1, line2, city, region, country, postalCode, notes }
   shippingAddress String
   fulfillmentMethod String
-  // JSON: { method, zoneId, fee, label }
   fulfillment      String
-  // JSON: { method, provider, fee, label }
   payment         String
   subtotal        Float
   fulfillmentFee   Float         @default(0)
@@ -363,15 +453,17 @@ model Order {
   total           Float
   currency        String         @default("KES")
   notes           String?
-  // Snapshot of items at order time
   items           OrderItem[]
   events          OrderEvent[]
   payments        PaymentAttempt[]
+  // Flag: order placed while shop was CLOSED (needs verification per shop policy)
+  placedWhileClosed Boolean      @default(false)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
   @@index([tenantId, status])
   @@index([tenantId, customerId])
+  @@index([customerUserId])
 }
 
 enum OrderStatus {
@@ -401,7 +493,6 @@ model OrderItem {
   unitPrice     Float
   quantity      Int
   lineTotal     Float
-  // Snapshot of additional attributes at the moment of order
   snapshot      String    @default("{}")
 
   @@index([orderId])
@@ -411,7 +502,6 @@ model OrderEvent {
   id          String   @id @default(cuid())
   orderId     String
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  // CREATED, CONFIRMED, FULFILLMENT_STARTED, DELIVERED, CANCELLED, REFUNDED, NOTE, etc.
   type        String
   detail      String?
   actorId     String?
@@ -423,7 +513,8 @@ model OrderEvent {
 }
 
 // ---------------------------------------------------------------------------
-// Payments
+// Payments: provider configs (for credential-bearing providers like Daraja)
+// + simple enabled-method flags (for cash, till, etc.)
 // ---------------------------------------------------------------------------
 
 model PaymentProviderConfig {
@@ -431,14 +522,10 @@ model PaymentProviderConfig {
   tenantId      String
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   provider      String
-  // Encrypted blob (AES-256-GCM base64). Decrypted only server-side by authorized code.
   encryptedConfig String
-  // Masked preview fields for UI display (never the real secret)
   displayName   String
   enabled       Boolean  @default(false)
-  // Environment: sandbox or production for this provider
   environment   String   @default("sandbox")
-  // Last 4 of consumer key / phone number etc., used in masked display
   maskedHint    String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -447,24 +534,42 @@ model PaymentProviderConfig {
   @@index([tenantId])
 }
 
+// Lightweight "payment method" — represents a method the merchant offers.
+// Replaces the heavy PaymentProviderConfig for methods that don't need
+// credentials (cash_on_delivery, manual_till, manual_paybill, bank_transfer).
+// For methods that need credentials (mpesa_stk), use PaymentProviderConfig too.
+model PaymentMethod {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  method        String   // cash_on_delivery | manual_till | manual_paybill | bank_transfer | mpesa_stk | mpesa_manual
+  displayName   String   // customer-facing label
+  enabled       Boolean  @default(true)
+  // JSON: method-specific config (instructions, tillNumber, paybillNumber, accountName)
+  config        String   @default("{}")
+  // For credential-bearing methods: link to the PaymentProviderConfig
+  providerConfigId String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, method])
+  @@index([tenantId, enabled])
+}
+
 model PaymentAttempt {
   id            String         @id @default(cuid())
   orderId       String
   order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   tenantId      String
   provider      String
-  // For M-Pesa STK: the CheckoutRequestID returned by Daraja
   providerReference String?
-  // Internal reference we sent to the provider
   merchantReference String
-  // Idempotency key on the way in (so duplicate callbacks for the same ref are merged)
   idempotencyKey String?
   amount        Float
   currency      String         @default("KES")
   status        PaymentStatus  @default(PENDING)
-  // Raw provider payload (sanitised of any PII we shouldn't store)
   rawResponse   String?
-  // Last callback / verification payload (sanitised)
   callbackPayload String?
   failureReason String?
   initiatedAt   DateTime       @default(now())
@@ -496,9 +601,7 @@ model Page {
   slug         String
   title        String
   status       PageStatus   @default(DRAFT)
-  // Sanitised HTML body (sanitised server-side before save)
   body         String       @default("")
-  // JSON-encoded SEO metadata { title, description, ogImage }
   seo          String       @default("{}")
   publishedAt  DateTime?
   createdAt    DateTime     @default(now())
@@ -536,10 +639,8 @@ model DeliveryZone {
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name        String
-  // JSON: array of postal codes / area names covered
   areas       String
   fee         Float
-  // Optional minimum order amount required for this zone
   minimumOrder Float?
   estimatedMinutes Int?
   active      Boolean  @default(true)
@@ -557,7 +658,6 @@ model Discount {
   description String?
   type        DiscountType
   value       Float
-  // For PERCENTAGE: 0..100 ; for FLAT: amount in currency
   minimumOrder Float?
   startsAt    DateTime
   endsAt      DateTime?
@@ -577,7 +677,7 @@ enum DiscountType {
 }
 
 // ---------------------------------------------------------------------------
-// AI providers, AI access requests
+// AI providers, AI access requests, AI knowledge base, AI drafts (approval workflow)
 // ---------------------------------------------------------------------------
 
 model AiProviderConfig {
@@ -585,11 +685,9 @@ model AiProviderConfig {
   tenantId      String
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   provider      String
-  // Encrypted blob (AES-256-GCM base64): includes apiKey, baseUrl, defaultModel
   encryptedConfig String
   displayName   String
   enabled       Boolean  @default(false)
-  // Models list (JSON array) exposed to merchant UI
   models        String   @default("[]")
   maskedHint    String?
   createdAt     DateTime @default(now())
@@ -606,15 +704,12 @@ model AiAccessRequest {
   requestedBy  String
   user         User              @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
   provider     String
-  // What they are asking for (e.g. "production key", "higher rate limit")
   requestedAccess String
   justification String
   status       AiAccessStatus    @default(PENDING)
-  // Decision notes set by platform operator
   decisionNotes String?
   decidedBy    String?
   decidedAt    DateTime?
-  // True when an email notification was successfully delivered
   emailDelivered Boolean         @default(false)
   emailError   String?
   createdAt    DateTime          @default(now())
@@ -631,6 +726,156 @@ enum AiAccessStatus {
   REVOKED
 }
 
+// Per-tenant knowledge base. Owner provides entries; AI uses them when answering
+// customer questions about this specific business. Knowledge is scoped: tenant A's
+// AI never sees tenant B's knowledge.
+model BusinessKnowledge {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Q/A pair OR a freeform note. If question is set, AI uses this as a Q→A hint.
+  // If question is null, it's a freeform knowledge chunk.
+  question     String?
+  answer       String
+  // Category: hours, policies, products, faq, location, custom
+  category     String   @default("general")
+  // Source: OWNER_PROVIDED, AI_SUGGESTED, AI_GENERATED
+  source       String   @default("OWNER_PROVIDED")
+  // For AI-suggested entries pending owner approval
+  status       String   @default("APPROVED") // APPROVED | PENDING | REJECTED
+  // Confidence: 0..1 for AI-suggested entries
+  confidence   Float?
+  // Feedback loop: how many times used in answers, average owner rating
+  timesUsed    Int      @default(0)
+  avgRating    Float?
+  lastUsedAt   DateTime?
+  // Weekly review fields: when this entry was last reviewed by AI / owner
+  lastReviewedAt DateTime?
+  // Owner notes / edits on AI suggestions
+  ownerNotes   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, category])
+}
+
+// AI-generated proposals awaiting owner approval.
+// Used for: business setup (AI proposes business profile from description),
+// CMS content (AI proposes page content), product descriptions, etc.
+// NOTHING in this table is published to the storefront until the owner approves.
+model AiDraft {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // The user who requested the AI generation
+  requestedBy  String
+  user         User     @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+  // What kind of draft: business_setup, cms_page, product_description, knowledge_entry, etc.
+  draftType   String
+  // The original prompt / request from the owner
+  prompt      String
+  // The AI's proposed output (JSON-encoded; structure depends on draftType)
+  proposal    String
+  // Optional: AI's interpretation summary shown to owner before they approve
+  understanding String?
+  // Status: PENDING (awaiting owner action), APPROVED, EDITED (owner modified before approving), REJECTED, RETRIED (owner asked AI to try again)
+  status      String   @default("PENDING")
+  // When approved, appliedTo records what was changed (e.g. "tenant:abc", "page:xyz")
+  appliedTo   String?
+  // Owner feedback / notes
+  ownerFeedback String?
+  // AI model that generated this draft
+  model       String?
+  // Retry chain: previous draft ID if this is a retry
+  parentDraftId String?
+  createdAt   DateTime @default(now())
+  decidedAt   DateTime?
+
+  @@index([tenantId, status])
+  @@index([requestedBy, status])
+  @@index([draftType, status])
+}
+
+// Log of AI answers to customer questions, with owner feedback loop.
+// Owner can review these, suggest better answers, and approve improvements
+// which feed back into BusinessKnowledge.
+model AiAnswerLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // The customer question that was asked
+  question     String
+  // The AI's answer
+  answer       String
+  // Whether the customer was satisfied (thumbs up/down) — null if not yet rated
+  customerRating Int?
+  // Owner feedback: did the owner review this answer?
+  ownerReviewed Boolean @default(false)
+  ownerFeedback String?
+  // If owner approved a better answer, link to the new BusinessKnowledge entry created
+  improvedKnowledgeId String?
+  // What knowledge entries were used to generate this answer
+  usedKnowledgeIds String @default("[]")
+  model        String?
+  createdAt    DateTime @default(now())
+  reviewedAt  DateTime?
+  feedback    AiAnswerFeedback[]
+
+  @@index([tenantId, createdAt])
+  @@index([ownerReviewed])
+}
+
+// Owner feedback on AI answers (separate from AiAnswerLog.customerRating).
+// Used when the owner reviews past AI answers and provides better responses.
+model AiAnswerFeedback {
+  id           String   @id @default(cuid())
+  answerLogId  String
+  answerLog    AiAnswerLog @relation(fields: [answerLogId], references: [id], onDelete: Cascade)
+  ownerId      String
+  owner        User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // The owner's suggested better answer
+  betterAnswer String
+  // Whether to add this as a new BusinessKnowledge entry
+  addToKnowledge Boolean @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([answerLogId])
+}
+
+// ---------------------------------------------------------------------------
+// Reviews & ratings
+// ---------------------------------------------------------------------------
+
+// Customer reviews of shops (tenants) or products. One review per (user, target).
+// Reviews are public; ratings feed into shop/product average ratings.
+model Review {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // What is being reviewed: SHOP or PRODUCT
+  targetType   String   // "SHOP" | "PRODUCT"
+  productId     String?
+  product      Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating       Int       // 1..5
+  title        String?
+  body         String?
+  // Owner reply (optional)
+  ownerReply   String?
+  ownerReplyAt DateTime?
+  // Moderation: PENDING, APPROVED, HIDDEN
+  status       String   @default("APPROVED")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, userId, targetType, productId])
+  @@index([tenantId, targetType])
+  @@index([productId])
+  @@index([userId])
+}
+
 // ---------------------------------------------------------------------------
 // Audit, notifications, webhooks
 // ---------------------------------------------------------------------------
@@ -642,7 +887,6 @@ model AuditEvent {
   actorId     String?
   user        User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
   action      String
-  // CREATE / UPDATE / DELETE / LOGIN / LOGOUT / PAYMENT_INITIATED / etc.
   category    String
   targetType  String?
   targetId    String?
@@ -661,13 +905,12 @@ model Notification {
   tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   userId      String?
   user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  channel     String   // EMAIL, SMS, WHATSAPP, IN_APP
-  // Template identifier, e.g. ORDER_CONFIRMATION, PAYMENT_RECEIVED
+  channel     String
   template    String
   recipient   String
   subject     String?
   body        String
-  status      String   @default("PENDING") // PENDING, SENT, FAILED
+  status      String   @default("PENDING")
   providerMessageId String?
   error       String?
   createdAt   DateTime @default(now())
@@ -681,19 +924,195 @@ model WebhookEvent {
   id          String   @id @default(cuid())
   tenantId    String?
   tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  // The provider/source (e.g. mpesa-daraja, aevibron-ai, manual)
   source      String
-  // Event type (e.g. STK_CALLBACK, AI_ACCESS_REQUEST, PAYMENT_VERIFIED)
   type        String
-  // Idempotency key for the event (so duplicate callbacks collapse)
   idempotencyKey String?
-  // Raw payload (sanitised)
   payload     String
-  status      String   @default("RECEIVED") // RECEIVED, PROCESSED, FAILED
+  status      String   @default("RECEIVED")
   error       String?
   createdAt   DateTime @default(now())
   processedAt DateTime?
 
   @@index([tenantId, source, type])
   @@index([idempotencyKey])
+}
+
+// ---------------------------------------------------------------------------
+// Customer activity: wishlist, recently viewed, addresses, coins, referrals, promotions
+// ---------------------------------------------------------------------------
+
+// Customer wishlist — saved products across all shops. Each wishlist item is
+// scoped to a tenant (so we know which shop the product belongs to).
+model WishlistItem {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId    String?
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId, tenantId])
+}
+
+// Recently viewed products — keeps last 20 per user
+model RecentlyViewed {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  viewedAt     DateTime @default(now())
+
+  @@index([userId, viewedAt])
+  @@index([userId, tenantId])
+}
+
+// Customer saved addresses (multi-address book, with default flag)
+model SavedAddress {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label        String   // e.g. "Home", "Work", "Mom's place"
+  line1        String
+  line2       String?
+  city        String
+  region      String
+  country     String   @default("KE")
+  postalCode  String?
+  phone       String?
+  notes       String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Gamified currency: customers earn coins via daily check-in, orders, reviews,
+// referrals. Coins can be redeemed for discounts at checkout (future feature).
+// This is NOT a stored-value wallet — coins are non-transferable promotional
+// currency with no cash value.
+model CustomerCoinBalance {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance      Int      @default(0)
+  lastCheckInAt DateTime?
+  // Streak counter for daily check-ins (consecutive days)
+  streak       Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model CoinTransaction {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // EARN type: DAILY_CHECKIN, ORDER_PLACED, REVIEW_LEFT, REFERRAL_SUCCESS
+  // SPEND type: DISCOUNT_REDEEMED (future)
+  type         String
+  amount       Int      // positive for earn, negative for spend
+  description  String
+  // Optional reference (orderId, reviewId, referredUserId)
+  referenceId  String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Referral codes: customers share their code, friends get a discount, the
+// referrer earns coins when the friend places their first order.
+model Referral {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // The unique referral code (8 chars, uppercase)
+  code         String   @unique
+  // Who signed up using this code
+  referredUserIds String @default("[]") // JSON array of userIds
+  // Coins earned from this referral (auto-updated)
+  coinsEarned  Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([code])
+}
+
+// Promotions: store managers create these; they appear in the marketplace
+// promotional banner slot when active.
+model Promotion {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title        String
+  description  String
+  // Optional: link to a product, category, or discount code
+  linkType     String?  // "product" | "category" | "discount" | "url"
+  linkRef      String?
+  // Optional: image URL (uses tenant's media library or external)
+  imageUrl     String?
+  // Schedule
+  startsAt     DateTime
+  endsAt       DateTime?
+  // Active flag (independent of schedule for easy pause)
+  active       Boolean  @default(true)
+  // Display: which marketplace slots to appear in
+  placement    String   @default("marketplace_top") // "marketplace_top" | "marketplace_sidebar" | "storefront_top"
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, active])
+  @@index([active, placement])
+}
+
+// ---------------------------------------------------------------------------
+// Support / Communication system
+// ---------------------------------------------------------------------------
+
+model SupportTicket {
+  id           String   @id @default(cuid())
+  // Who created the ticket
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Optional: if the ticket is about a specific tenant (shop)
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // Category: bug_report, product_request, enquiry, custom
+  category     String
+  customCategory String?
+  subject      String
+  status       String   @default("open")
+  priority     String   @default("normal")
+  messages     SupportMessage[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([tenantId, status])
+  @@index([status, priority])
+}
+
+model SupportMessage {
+  id           String   @id @default(cuid())
+  ticketId     String
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  // Who sent this message
+  senderId     String
+  senderName   String
+  senderRole   String   // customer, business_owner, admin
+  body         String
+  // Read status
+  isRead       Boolean  @default(false)
+  readAt       DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([ticketId, createdAt])
 }

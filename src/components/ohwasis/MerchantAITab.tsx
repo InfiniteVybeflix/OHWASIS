@@ -14,7 +14,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Bot, Loader2, Plus, Send, KeyRound, Trash2, Sparkles } from 'lucide-react'
+import { Bot, Loader2, Plus, Send, KeyRound, Trash2, Sparkles, Zap } from 'lucide-react'
 
 interface AiConfigDTO {
   id: string
@@ -186,6 +186,8 @@ export function MerchantAITab({ tenantHandle }: { tenantHandle: string }) {
 function AiConfigEditor({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; onSaved: () => void }) {
   const pushToast = useOhwasisStore((s) => s.pushToast)
   const [loading, setLoading] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [fetchedModels, setFetchedModels] = useState<string[]>([])
   const [form, setForm] = useState({
     provider: 'aevibron',
     displayName: 'Aevibron Gateway',
@@ -200,20 +202,66 @@ function AiConfigEditor({ open, onOpenChange, onSaved }: { open: boolean; onOpen
   const submit = async () => {
     setLoading(true)
     try {
-      await apiFetch('/api/ai/config', {
+      const body = {
+        provider: form.provider,
+        displayName: form.displayName,
+        enabled: form.enabled,
+        baseUrl: form.baseUrl,
+        apiKey: form.apiKey,
+        defaultModel: form.defaultModel,
+        authScheme: form.authScheme,
+        models: typeof form.models === 'string'
+          ? form.models.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : Array.isArray(form.models) ? form.models : [],
+      }
+      console.log('[AI saveProvider] Sending body:', JSON.stringify(body).slice(0, 200))
+      const res = await apiFetch<{ config: unknown }>('/api/ai/config', {
         method: 'POST',
-        body: JSON.stringify({
-          ...form,
-          models: form.models.split(',').map((s) => s.trim()).filter(Boolean),
-        }),
+        body: JSON.stringify(body),
       })
+      console.log('[AI saveProvider] Response:', res)
       pushToast({ type: 'success', message: 'AI provider saved' })
       onSaved()
       onOpenChange(false)
     } catch (err) {
-      pushToast({ type: 'error', message: err instanceof Error ? err.message : 'Save failed' })
+      console.error('[AI saveProvider] Error:', err)
+      const msg = err instanceof Error ? err.message : 'Save failed'
+      const status = (err as Error & { status?: number }).status
+      pushToast({ type: 'error', message: status ? `(${status}) ${msg}` : msg })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const testApiKey = async () => {
+    if (!form.apiKey || !form.baseUrl) {
+      pushToast({ type: 'error', message: 'Enter API key and base URL first' })
+      return
+    }
+    setTesting(true)
+    setFetchedModels([])
+    try {
+      const res = await apiFetch<{ models: string[] }>('/api/ai/test-key', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: form.provider,
+          baseUrl: form.baseUrl,
+          apiKey: form.apiKey,
+          authScheme: form.authScheme,
+        }),
+      })
+      if (res.models && res.models.length > 0) {
+        setFetchedModels(res.models)
+        setForm((f) => ({ ...f, defaultModel: res.models[0], models: res.models.join(',') }))
+        pushToast({ type: 'success', message: `✓ API key valid! ${res.models.length} models found.` })
+      } else {
+        pushToast({ type: 'info', message: 'API key valid, but no models returned. Enter models manually.' })
+      }
+    } catch (err) {
+      pushToast({ type: 'error', message: err instanceof Error ? err.message : 'Test failed' })
+      console.error('[AI testApiKey]', err)
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -274,8 +322,26 @@ function AiConfigEditor({ open, onOpenChange, onSaved }: { open: boolean; onOpen
             </div>
           </div>
           <div>
-            <Label>Models (comma-separated)</Label>
-            <Input value={form.models} onChange={(e) => setForm((f) => ({ ...f, models: e.target.value }))} />
+            <div className="flex items-center justify-between">
+              <Label>Models</Label>
+              <Button size="sm" variant="outline" type="button" onClick={() => void testApiKey()} disabled={testing || !form.apiKey}>
+                {testing ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Zap className="mr-1 h-3 w-3" />}
+                Test API key
+              </Button>
+            </div>
+            {fetchedModels.length > 0 ? (
+              <Select value={form.defaultModel} onValueChange={(v) => { setForm((f) => ({ ...f, defaultModel: v })); setForm((f) => ({ ...f, models: fetchedModels.join(',') })) }}>
+                <SelectTrigger><SelectValue placeholder="Select a model" /></SelectTrigger>
+                <SelectContent>
+                  {fetchedModels.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input value={form.models} onChange={(e) => setForm((f) => ({ ...f, models: e.target.value }))} placeholder="Test your API key to auto-detect models, or type comma-separated" />
+            )}
+            {fetchedModels.length > 0 && (
+              <p className="mt-1 text-xs text-emerald-600">✓ {fetchedModels.length} models detected. Select your default above.</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={form.enabled} onCheckedChange={(v) => setForm((f) => ({ ...f, enabled: v }))} />

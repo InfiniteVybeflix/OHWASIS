@@ -12,16 +12,18 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ShoppingBag, Store, User as UserIcon } from 'lucide-react'
 
 export function AuthModals() {
   const authModal = useOhwasisStore((s) => s.authModal)
   const setAuthModal = useOhwasisStore((s) => s.setAuthModal)
   const refreshSession = useOhwasisStore((s) => s.refreshSession)
+  const setView = useOhwasisStore((s) => s.setView)
   const pushToast = useOhwasisStore((s) => s.pushToast)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
+  const [accountType, setAccountType] = useState<'CUSTOMER' | 'BUSINESS_OWNER'>('CUSTOMER')
   const [loading, setLoading] = useState(false)
 
   const close = () => {
@@ -29,6 +31,7 @@ export function AuthModals() {
     setEmail('')
     setPassword('')
     setName('')
+    setAccountType('CUSTOMER')
   }
 
   const submit = async () => {
@@ -38,9 +41,15 @@ export function AuthModals() {
       if (authModal === 'signup') {
         await apiFetch('/api/auth/signup', {
           method: 'POST',
-          body: JSON.stringify({ email, password, name: name || undefined }),
+          body: JSON.stringify({ email, password, name: name || undefined, accountType }),
         })
-        pushToast({ type: 'success', message: 'Account created. Welcome to OHWASIS!' })
+        pushToast({
+          type: 'success',
+          message:
+            accountType === 'BUSINESS_OWNER'
+              ? 'Account created. Let&apos;s set up your first business.'
+              : 'Welcome to OHWASIS! Browse the marketplace to discover businesses.',
+        })
       } else {
         await apiFetch('/api/auth/login', {
           method: 'POST',
@@ -49,10 +58,18 @@ export function AuthModals() {
         pushToast({ type: 'success', message: 'Signed in.' })
       }
       await refreshSession()
+      // Auto-route based on account type after signup
+      if (authModal === 'signup') {
+        if (accountType === 'BUSINESS_OWNER') {
+          setView('merchant')
+        } else {
+          setView('marketplace')
+        }
+      }
       close()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Authentication failed'
-      pushToast({ type: 'error', message: msg })
+      const message = err instanceof Error ? err.message : 'Authentication failed'
+      pushToast({ type: 'error', message })
     } finally {
       setLoading(false)
     }
@@ -67,8 +84,8 @@ export function AuthModals() {
           </DialogTitle>
           <DialogDescription>
             {authModal === 'signup'
-              ? 'One account works across every OHWASIS-powered storefront and merchant dashboard.'
-              : 'Access your merchant dashboards and customer orders.'}
+              ? 'One account works across every OHWASIS-powered storefront. Choose your role below.'
+              : 'Access your dashboard, orders, or marketplace.'}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -79,16 +96,49 @@ export function AuthModals() {
           }}
         >
           {authModal === 'signup' && (
-            <div className="space-y-1.5">
-              <Label htmlFor="name">Name (optional)</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                autoComplete="name"
-              />
-            </div>
+            <>
+              <div>
+                <Label>I am signing up as</Label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAccountType('CUSTOMER')}
+                    className={`flex flex-col items-center gap-1 rounded-lg border p-3 transition-colors ${
+                      accountType === 'CUSTOMER'
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-border hover:bg-muted/50'
+                    }`}
+                  >
+                    <ShoppingBag className="h-5 w-5" />
+                    <span className="text-xs font-medium">Customer</span>
+                    <span className="text-[10px] text-muted-foreground">Browse &amp; order</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAccountType('BUSINESS_OWNER')}
+                    className={`flex flex-col items-center gap-1 rounded-lg border p-3 transition-colors ${
+                      accountType === 'BUSINESS_OWNER'
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-border hover:bg-muted/50'
+                    }`}
+                  >
+                    <Store className="h-5 w-5" />
+                    <span className="text-xs font-medium">Business Owner</span>
+                    <span className="text-[10px] text-muted-foreground">Open a shop</span>
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="name">Name (optional)</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name"
+                  autoComplete="name"
+                />
+              </div>
+            </>
           )}
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
@@ -117,7 +167,9 @@ export function AuthModals() {
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {authModal === 'signup' ? 'Create account' : 'Sign in'}
+            {authModal === 'signup'
+              ? (accountType === 'BUSINESS_OWNER' ? 'Create business owner account' : 'Create customer account')
+              : 'Sign in'}
           </Button>
           <div className="text-center text-xs text-muted-foreground">
             {authModal === 'signup' ? (
@@ -149,3 +201,7 @@ export function AuthModals() {
     </Dialog>
   )
 }
+
+// Avoid unused-import warnings
+void UserIcon
+

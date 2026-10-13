@@ -1,9 +1,34 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
-export type ViewName = 'landing' | 'storefront' | 'merchant' | 'admin' | 'order-confirmation'
+// sonner is imported lazily to avoid SSR issues — the toast function is only
+// called in the browser when pushToast is invoked, never during SSR.
+let sonnerToast: { success: (msg: string) => void; error: (msg: string) => void; info?: (msg: string) => void } | null = null
+async function getSonner() {
+  if (!sonnerToast) {
+    try {
+      const mod = await import('sonner')
+      sonnerToast = mod.toast
+    } catch {
+      sonnerToast = null
+    }
+  }
+  return sonnerToast
+}
+
+export type ViewName =
+  | 'landing' | 'storefront' | 'merchant' | 'admin' | 'order-confirmation'
+  | 'marketplace' | 'customer-profile' | 'customer-orders' | 'store-profile'
+  | 'cart' | 'categories' | 'wishlist' | 'recently-viewed' | 'addresses'
+  | 'promotions' | 'product-detail' | 'settings' | 'support' | 'onboarding'
+
+/** Active product for the product-detail view. */
+export interface ActiveProduct {
+  productId: string
+  tenantHandle: string
+}
 
 export interface UserDTO {
   id: string
@@ -11,6 +36,7 @@ export interface UserDTO {
   name: string | null
   globalRole: number
   status: string
+  accountType?: string
 }
 
 export interface TenantSummary {
@@ -20,6 +46,7 @@ export interface TenantSummary {
   industry: string
   tagline?: string | null
   theme?: Record<string, string> | null
+  openStatus?: string
 }
 
 export interface MembershipDTO {
@@ -34,6 +61,8 @@ export interface SessionState {
   membership: { role: string; status: string } | null
   memberships: MembershipDTO[]
   isPlatformOperator: boolean
+  isBusinessOwner: boolean
+  isCustomer: boolean
 }
 
 export interface ToastMsg {
@@ -61,14 +90,26 @@ interface OhwasisState {
   activeTenantHandle: string | null
   setActiveTenant: (handle: string | null) => void
 
-  // Order confirmation reference (set right after checkout)
+  // Active product for product detail view
+  activeProduct: ActiveProduct | null
+  setActiveProduct: (p: ActiveProduct | null) => void
+
+  // Order confirmation reference
   lastOrderReference: string | null
   setLastOrderReference: (ref: string | null) => void
 
-  // Toast queue (simple in-memory)
+  // Payment details from checkout (for the confirmation page)
+  lastPaymentInfo: { status: string; message: string; tillNumber?: string; paybillNumber?: string; accountName?: string; bankName?: string; accountNumber?: string; instructions?: string } | null
+  setLastPaymentInfo: (info: OhwasisState['lastPaymentInfo']) => void
+
+  // Toast queue — uses sonner under the hood
   toasts: ToastMsg[]
   pushToast: (t: Omit<ToastMsg, 'id'>) => void
   dismissToast: (id: string) => void
+
+  // Theme
+  theme: 'light' | 'dark' | 'system'
+  setTheme: (t: 'light' | 'dark' | 'system') => void
 }
 
 const emptySession: SessionState = {
@@ -77,6 +118,8 @@ const emptySession: SessionState = {
   membership: null,
   memberships: [],
   isPlatformOperator: false,
+  isBusinessOwner: false,
+  isCustomer: true,
 }
 
 export const useOhwasisStore = create<OhwasisState>()(
@@ -113,28 +156,77 @@ export const useOhwasisStore = create<OhwasisState>()(
       },
 
       activeTenantHandle: null,
-      setActiveTenant: (handle) => set({ activeTenantHandle: handle }),
+      setActiveTenant: (handle) => {
+        set({ activeTenantHandle: handle })
+        // Also set a cookie so server-side code (getRequestContext) can read it
+        if (typeof document !== 'undefined') {
+          if (handle) {
+            document.cookie = `ohwasis_active_tenant=${encodeURIComponent(handle)}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`
+          } else {
+            document.cookie = 'ohwasis_active_tenant=; Path=/; Max-Age=0; SameSite=Lax'
+          }
+        }
+      },
+
+      activeProduct: null,
+      setActiveProduct: (p) => set({ activeProduct: p }),
 
       lastOrderReference: null,
       setLastOrderReference: (ref) => set({ lastOrderReference: ref }),
 
+      lastPaymentInfo: null,
+      setLastPaymentInfo: (info) => set({ lastPaymentInfo: info }),
+
       toasts: [],
       pushToast: (t) => {
-        const id = Math.random().toString(36).slice(2)
-        set((s) => ({ toasts: [...s.toasts, { ...t, id }] }))
-        setTimeout(() => {
-          set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }))
-        }, 5000)
+        // Use sonner — lazy-loaded to avoid SSR issues
+        getSonner().then((toast) => {
+          if (!toast) return
+          if (t.type === 'success') toast.success(t.message)
+          else if (t.type === 'error') toast.error(t.message)
+          else toast.success(t.message)
+        }).catch(() => { /* ignore */ })
       },
-      dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+      dismissToast: () => { /* sonner handles dismissal automatically */ },
+
+      theme: 'system',
+      setTheme: (t) => {
+        set({ theme: t })
+        applyTheme(t)
+      },
     }),
     {
       name: 'ohwasis-store',
-      // Only persist tenant handle (not session — session comes from cookie)
-      partialize: (s) => ({ activeTenantHandle: s.activeTenantHandle, view: s.view }) as OhwasisState,
+      storage: createJSONStorage(() => {
+        // Guard against SSR (no localStorage during SSR)
+        if (typeof window === 'undefined') {
+          return {
+            getItem: () => null,
+            setItem: () => {},
+            removeItem: () => {},
+          }
+        }
+        return localStorage
+      }),
+      // Only persist specific fields — not session (session comes from cookie)
+      partialize: (s) => ({
+        activeTenantHandle: s.activeTenantHandle,
+        view: s.view,
+        theme: s.theme,
+      }),
+      // Skip hydration to prevent SSR/CSR mismatch — we manually hydrate in page.tsx
+      skipHydration: true,
     },
   ),
 )
+
+/** Apply theme to the document — called on setTheme and on initial load */
+function applyTheme(theme: 'light' | 'dark' | 'system') {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  root.classList.toggle('dark', isDark)
+}
 
 /**
  * Fetch wrapper that auto-attaches credentials and parses JSON.

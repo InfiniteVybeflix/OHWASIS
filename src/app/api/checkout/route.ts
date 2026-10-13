@@ -293,9 +293,60 @@ export const POST = withErrorHandler(async (req) => {
   let paymentInitiation: { status: string; message: string; checkoutRequestId?: string } | null = null
   if (input.paymentMethod === 'mpesa_stk') {
     paymentInitiation = await initiateMpesaStk(order.id, tenant.id, total, order.currency, input.customer.phone, order.reference, req)
+  } else if (input.paymentMethod === 'cash_on_delivery') {
+    // COD: auto-confirm the order. Cash is collected on delivery — no upfront
+    // payment verification needed. The order is ready for fulfillment.
+    await prisma.paymentAttempt.create({
+      data: {
+        orderId: order.id,
+        tenantId: tenant.id,
+        provider: 'cash_on_delivery',
+        merchantReference: order.reference,
+        amount: total,
+        currency: order.currency,
+        status: 'SUCCESS',
+        verifiedAt: new Date(),
+        callbackPayload: JSON.stringify({ method: 'cash_on_delivery', note: 'Cash to be collected on delivery' }),
+      },
+    })
+    // Transition order to CONFIRMED
+    await prisma.order.update({ where: { id: order.id }, data: { status: 'CONFIRMED' } })
+    await prisma.orderEvent.create({
+      data: {
+        orderId: order.id,
+        type: 'PAYMENT_VERIFIED',
+        detail: 'Cash on Delivery — payment will be collected on delivery',
+        actorName: input.customer.name,
+      },
+    })
+    paymentInitiation = {
+      status: 'SUCCESS',
+      message: `Order confirmed! Pay ${total.toFixed(0)} KES in cash when your order is delivered.`,
+    }
   } else {
-    // For manual/COD: create a PENDING PaymentAttempt that the merchant
-    // will mark verified from their dashboard.
+    // For manual_till / manual_paybill / bank_transfer / mpesa_manual:
+    // create a PENDING PaymentAttempt. The merchant verifies from their dashboard.
+    // Fetch the payment method config to show the customer the right instructions.
+    const pmConfig = await prisma.paymentMethod.findUnique({
+      where: { tenantId_method: { tenantId: tenant.id, method: input.paymentMethod } },
+    })
+    let instructions = 'Pay and reference your order number.'
+    let tillNumber: string | null = null
+    let paybillNumber: string | null = null
+    let accountName: string | null = null
+    let bankName: string | null = null
+    let accountNumber: string | null = null
+    if (pmConfig) {
+      try {
+        const cfg = JSON.parse(pmConfig.config || '{}')
+        instructions = cfg.instructions ?? instructions
+        tillNumber = cfg.tillNumber ?? null
+        paybillNumber = cfg.paybillNumber ?? null
+        accountName = cfg.accountName ?? null
+        bankName = cfg.bankName ?? null
+        accountNumber = cfg.accountNumber ?? null
+      } catch { /* ignore */ }
+    }
     await prisma.paymentAttempt.create({
       data: {
         orderId: order.id,
@@ -307,7 +358,16 @@ export const POST = withErrorHandler(async (req) => {
         status: 'PENDING',
       },
     })
-    paymentInitiation = { status: 'PENDING', message: 'Manual payment awaiting merchant verification' }
+    paymentInitiation = {
+      status: 'PENDING',
+      message: `Order placed! Complete your payment: ${instructions}`,
+      // Include payment details for the customer to copy
+      ...(tillNumber && { tillNumber }),
+      ...(paybillNumber && { paybillNumber }),
+      ...(accountName && { accountName }),
+      ...(bankName && { bankName }),
+      ...(accountNumber && { accountNumber }),
+    }
   }
 
   return NextResponse.json({

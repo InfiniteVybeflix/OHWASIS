@@ -25,6 +25,7 @@ export const signupSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   name: z.string().min(1).max(120).optional(),
+  accountType: z.enum(['CUSTOMER', 'BUSINESS_OWNER']).default('CUSTOMER'),
 })
 
 export const loginSchema = z.object({

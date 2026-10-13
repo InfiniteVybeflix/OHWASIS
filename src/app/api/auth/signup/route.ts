@@ -13,8 +13,17 @@ export const POST = withErrorHandler(async (req) => {
     return NextResponse.json({ error: 'email_in_use' }, { status: 409 })
   }
   const passwordHash = await hashPassword(input.password)
+  // Set globalRole based on accountType
+  // CUSTOMER → globalRole 0; BUSINESS_OWNER → globalRole 1; PLATFORM_OPERATOR (only set via direct DB)
+  const globalRole = input.accountType === 'BUSINESS_OWNER' ? 1 : 0
   const user = await prisma.user.create({
-    data: { email: input.email, passwordHash, name: input.name ?? null, globalRole: 0 },
+    data: {
+      email: input.email,
+      passwordHash,
+      name: input.name ?? null,
+      accountType: input.accountType,
+      globalRole,
+    },
   })
   const { session, token } = await createSession(user.id, req)
   const ctx = await getRequestContext(req)
@@ -24,13 +33,13 @@ export const POST = withErrorHandler(async (req) => {
     category: 'AUTH',
     targetType: 'User',
     targetId: user.id,
-    metadata: { email: user.email },
+    metadata: { email: user.email, accountType: user.accountType },
   })
   const headers = new Headers()
   headers.append('Set-Cookie', setSessionCookie(token, session.expiresAt))
   return NextResponse.json(
     {
-      user: { id: user.id, email: user.email, name: user.name, globalRole: user.globalRole },
+      user: { id: user.id, email: user.email, name: user.name, globalRole: user.globalRole, accountType: user.accountType },
       sessionId: session.id,
     },
     { status: 201, headers },

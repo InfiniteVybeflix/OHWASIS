@@ -4,6 +4,7 @@ import { verifyPassword, createSession, setSessionCookie, getRequestContext } fr
 import { loginSchema } from '@/lib/validation/schemas'
 import { withErrorHandler, parseBody } from '@/lib/api'
 import { audit } from '@/lib/audit'
+import { tryAdminLogin, ensureAdminUser } from '@/lib/admin-auth'
 
 // Rate limit: simple in-memory (per IP) — sufficient for one-instance dev.
 const attempts = new Map<string, { count: number; firstAt: number }>()
@@ -25,29 +26,39 @@ export const POST = withErrorHandler(async (req) => {
     attempts.set(ip, { count: 1, firstAt: now })
   }
 
-  const user = await prisma.user.findUnique({ where: { email: input.email } })
-  if (!user || !verifyPassword(input.password, user.passwordHash)) {
-    return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 })
+  // 1. Try admin login first (env-configured admin email + password)
+  const isAdmin = await tryAdminLogin(input.email, input.password)
+  let user
+  if (isAdmin) {
+    user = await ensureAdminUser(input.email)
+  } else {
+    // 2. Regular user login
+    user = await prisma.user.findUnique({ where: { email: input.email } })
+    if (!user || !verifyPassword(input.password, user.passwordHash)) {
+      return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 })
+    }
+    if (user.status !== 'ACTIVE') {
+      return NextResponse.json({ error: 'account_disabled', status: user.status }, { status: 403 })
+    }
   }
-  if (user.status !== 'ACTIVE') {
-    return NextResponse.json({ error: 'account_disabled', status: user.status }, { status: 403 })
-  }
+
   const { session, token } = await createSession(user.id, req)
   const ctx = await getRequestContext(req)
   await audit({
-    ctx: { ...ctx, user: { id: user.id, email: user.email, name: user.name, globalRole: user.globalRole, status: user.status } },
+    ctx: { ...ctx, user: { id: user.id, email: user.email, name: user.name, globalRole: user.globalRole, status: user.status, accountType: user.accountType as string | undefined } },
     action: 'login',
     category: 'AUTH',
     targetType: 'User',
     targetId: user.id,
-    metadata: { ip },
+    metadata: { ip, isAdmin },
   })
   const headers = new Headers()
   headers.append('Set-Cookie', setSessionCookie(token, session.expiresAt))
   return NextResponse.json(
     {
-      user: { id: user.id, email: user.email, name: user.name, globalRole: user.globalRole },
+      user: { id: user.id, email: user.email, name: user.name, globalRole: user.globalRole, accountType: user.accountType },
       sessionId: session.id,
+      isAdmin,
     },
     { headers },
   )

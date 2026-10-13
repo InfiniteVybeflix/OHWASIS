@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getRequestContext, requirePlatformOperator } from '@/lib/session'
-import { assertTenantOwns } from '@/lib/tenant'
 import { withErrorHandler } from '@/lib/api'
 import { audit } from '@/lib/audit'
 
@@ -25,7 +24,11 @@ export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
   }
 
   const existing = await prisma.tenant.findUnique({ where: { id } })
-  assertTenantOwns(existing, id, 'tenant') // pass-through: tenant owns itself
+  if (!existing) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  }
+  // NOTE: Platform operators have explicit cross-tenant access by design.
+  // We do NOT call assertTenantOwns here — the admin is operating ACROSS tenants.
 
   const updated = await prisma.tenant.update({
     where: { id },

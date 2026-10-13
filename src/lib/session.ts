@@ -24,6 +24,7 @@ export interface RequestContext {
     name: string | null
     globalRole: number
     status: string
+    accountType?: string
   } | null
   session: {
     id: string
@@ -144,6 +145,7 @@ export async function getRequestContext(req: Request): Promise<RequestContext> {
           name: sessionResult.user.name,
           globalRole: sessionResult.user.globalRole,
           status: sessionResult.user.status,
+          accountType: (sessionResult.user as { accountType?: string }).accountType ?? 'CUSTOMER',
         }
       : null,
     session: sessionResult
@@ -229,6 +231,7 @@ export async function getContextFromNextCookies(): Promise<RequestContext> {
           name: sessionResult.user.name,
           globalRole: sessionResult.user.globalRole,
           status: sessionResult.user.status,
+          accountType: (sessionResult.user as { accountType?: string }).accountType ?? 'CUSTOMER',
         }
       : null,
     session: sessionResult
@@ -260,6 +263,34 @@ export function requirePlatformOperator(ctx: RequestContext) {
   const u = requireUser(ctx)
   if (u.globalRole < 2) {
     throw new AuthorizationError('Platform operator access required')
+  }
+  return u
+}
+
+/**
+ * Require the user is a business owner (accountType === BUSINESS_OWNER) OR
+ * a platform operator (who can do everything a business owner can).
+ */
+export function requireBusinessOwner(ctx: RequestContext) {
+  const u = requireUser(ctx)
+  if (u.globalRole >= 2) return u
+  if (u.accountType !== 'BUSINESS_OWNER') {
+    throw new AuthorizationError('Business owner access required')
+  }
+  return u
+}
+
+/**
+ * Require the user is a customer (accountType === CUSTOMER). Platform operators
+ * and business owners can also act as customers (for testing, browsing, etc.)
+ * — only unauthenticated users are rejected.
+ */
+export function requireCustomer(ctx: RequestContext) {
+  const u = requireUser(ctx)
+  // Platform operators and business owners can access customer features
+  if (u.globalRole >= 2 || u.accountType === 'BUSINESS_OWNER') return u
+  if (u.accountType !== 'CUSTOMER') {
+    throw new AuthorizationError('Customer access required')
   }
   return u
 }

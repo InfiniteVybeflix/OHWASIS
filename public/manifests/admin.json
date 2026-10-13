@@ -1,0 +1,18 @@
+{
+  "name": "OHWASIS — Admin Console",
+  "short_name": "OHWASIS Admin",
+  "description": "Platform administration console for OHWASIS. Manage merchants, AI access, and audit logs.",
+  "start_url": "/?pwa=admin",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#f59e0b",
+  "orientation": "portrait-primary",
+  "id": "ohwasis-admin",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "en"
+}
