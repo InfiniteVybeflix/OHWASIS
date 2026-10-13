@@ -1,7 +1,7 @@
 'use client'
 
 import { useOhwasisStore } from '@/lib/store'
-import { BrandLockup } from '@/components/ohwasis/BrandMark'
+import { BrandLockup, BrandMark } from '@/components/ohwasis/BrandMark'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -12,98 +12,126 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { LogOut, ShoppingBag, Store, ShieldCheck, ChevronDown, User as UserIcon, Package, Sparkles } from 'lucide-react'
+import { LogOut, ShoppingBag, Store, ShieldCheck, ChevronDown, User as UserIcon, Package, Settings as SettingsIcon, MessageSquare, Menu } from 'lucide-react'
 import Link from 'next/link'
-import { BrandMark } from '@/components/ohwasis/BrandMark'
 
 export function Header() {
   const session = useOhwasisStore((s) => s.session)
   const setView = useOhwasisStore((s) => s.setView)
   const setAuthModal = useOhwasisStore((s) => s.setAuthModal)
   const logout = useOhwasisStore((s) => s.logout)
-  const setActiveTenant = useOhwasisStore((s) => s.setActiveTenant)
   const view = useOhwasisStore((s) => s.view)
 
   const isCustomer = session.isCustomer && !session.isBusinessOwner
   const isBusinessOwner = session.isBusinessOwner
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="container mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-        <button
-          onClick={() => setView(isCustomer ? 'marketplace' : 'landing')}
-          className="flex items-center gap-2 transition-opacity hover:opacity-90"
-          aria-label="OHWASIS home"
-        >
-          <BrandLockup size={26} />
-        </button>
+    <header className="sticky top-0 z-30 w-full border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-3 sm:px-4">
+        {/* Left: Brand — compact on mobile (icon only), full on desktop */}
+        <div className="flex items-center gap-1">
+          {/* Hamburger / menu button — visible on mobile only */}
+          {session.user && (
+            <button
+              onClick={() => setView('settings')}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground sm:hidden"
+              aria-label="Menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          )}
+          <button
+            onClick={() => setView(isCustomer ? 'marketplace' : 'landing')}
+            className="flex items-center gap-2 transition-opacity hover:opacity-90"
+            aria-label="OHWASIS home"
+          >
+            {/* Compact: mark only on mobile, full lockup on sm+ */}
+            <span className="sm:hidden">
+              <BrandMark size={24} className="text-primary" />
+            </span>
+            <span className="hidden sm:flex">
+              <BrandLockup size={24} />
+            </span>
+          </button>
+        </div>
 
+        {/* Right: Nav — hidden on mobile (use hamburger), visible on sm+ */}
         <nav className="flex items-center gap-1 sm:gap-2">
-          {/* Customer navigation */}
+          {/* Customer nav — only visible on sm+ (mobile uses bottom nav + hamburger) */}
           {isCustomer && (
             <>
               <Button
                 variant={view === 'marketplace' ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setView('marketplace')}
+                className="hidden sm:inline-flex"
               >
                 <ShoppingBag className="mr-1 h-3.5 w-3.5" /> Marketplace
               </Button>
               {session.user && (
-                <>
-                  <Button
-                    variant={view === 'customer-orders' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setView('customer-orders')}
-                    className="hidden sm:inline-flex"
-                  >
-                    <Package className="mr-1 h-3.5 w-3.5" /> Orders
-                  </Button>
-                </>
+                <Button
+                  variant={view === 'customer-orders' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setView('customer-orders')}
+                  className="hidden md:inline-flex"
+                >
+                  <Package className="mr-1 h-3.5 w-3.5" /> Orders
+                </Button>
               )}
             </>
           )}
 
-          {/* Business owner navigation — NOT for platform operators (they use Admin console) */}
+          {/* Business owner nav */}
           {isBusinessOwner && !session.isPlatformOperator && (
             <Button
               variant={view === 'merchant' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setView('merchant')}
+              className="hidden sm:inline-flex"
             >
               <Store className="mr-1 h-3.5 w-3.5" /> Dashboard
             </Button>
           )}
 
-          {/* Platform operator navigation */}
+          {/* Platform operator nav */}
           {session.isPlatformOperator && (
             <Button
               variant={view === 'admin' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setView('admin')}
+              className="hidden sm:inline-flex"
             >
               <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Admin
             </Button>
           )}
 
+          {/* User menu — compact on mobile (avatar only), full on desktop */}
           {session.user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <span className="hidden sm:inline">
+                <Button variant="ghost" size="sm" className="gap-1.5 px-2 sm:px-3">
+                  {/* Mobile: avatar circle only */}
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 text-xs font-bold text-white sm:hidden">
+                    {session.user.name?.[0]?.toUpperCase() ?? session.user.email[0].toUpperCase()}
+                  </span>
+                  {/* Desktop: name + chevron */}
+                  <span className="hidden sm:inline max-w-[120px] truncate">
                     {session.user.name ?? session.user.email.split('@')[0]}
                   </span>
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  <ChevronDown className="hidden h-3.5 w-3.5 sm:block" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent align="end" className="w-64 max-w-[calc(100vw-1rem)]">
                 <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  Signed in as <Badge variant="outline" className="ml-1 text-[10px]">{session.user.accountType?.replace('_', ' ').toLowerCase()}</Badge>
+                  Signed in as{' '}
+                  <Badge variant="outline" className="ml-1 text-[10px]">
+                    {session.user.accountType?.replace('_', ' ').toLowerCase()}
+                  </Badge>
                   <div className="mt-0.5 truncate text-sm text-foreground">{session.user.email}</div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
-                {/* Customer menu items */}
+                {/* Customer menu */}
                 {isCustomer && (
                   <>
                     <DropdownMenuItem onClick={() => setView('marketplace')}>
@@ -115,10 +143,16 @@ export function Header() {
                     <DropdownMenuItem onClick={() => setView('customer-profile')}>
                       <UserIcon className="mr-2 h-4 w-4" /> Profile
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setView('support')}>
+                      <MessageSquare className="mr-2 h-4 w-4" /> Support
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setView('settings')}>
+                      <SettingsIcon className="mr-2 h-4 w-4" /> Settings
+                    </DropdownMenuItem>
                   </>
                 )}
 
-                {/* Business owner menu items */}
+                {/* Business owner menu */}
                 {isBusinessOwner && (
                   <>
                     <DropdownMenuLabel className="text-xs text-muted-foreground">Your businesses</DropdownMenuLabel>
@@ -126,7 +160,7 @@ export function Header() {
                       <DropdownMenuItem
                         key={m.tenant.id}
                         onClick={() => {
-                          setActiveTenant(m.tenant.handle)
+                          useOhwasisStore.getState().setActiveTenant(m.tenant.handle)
                           setView('merchant')
                         }}
                         className="justify-between"
@@ -139,16 +173,28 @@ export function Header() {
                     <DropdownMenuItem onClick={() => setView('merchant')}>
                       <Store className="mr-2 h-4 w-4" /> Dashboard
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setView('support')}>
+                      <MessageSquare className="mr-2 h-4 w-4" /> Support
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setView('settings')}>
+                      <SettingsIcon className="mr-2 h-4 w-4" /> Settings
+                    </DropdownMenuItem>
                   </>
                 )}
 
-                {/* Platform operator menu items */}
+                {/* Platform operator menu */}
                 {session.isPlatformOperator && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel className="text-xs text-muted-foreground">Platform</DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => setView('admin')}>
                       <ShieldCheck className="mr-2 h-4 w-4" /> Admin console
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setView('support')}>
+                      <MessageSquare className="mr-2 h-4 w-4" /> Support
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setView('settings')}>
+                      <SettingsIcon className="mr-2 h-4 w-4" /> Settings
                     </DropdownMenuItem>
                   </>
                 )}
@@ -160,14 +206,14 @@ export function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setAuthModal('login')}>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={() => setAuthModal('login')} className="text-xs sm:text-sm">
                 Sign in
               </Button>
-              <Button size="sm" onClick={() => setAuthModal('signup')}>
+              <Button size="sm" onClick={() => setAuthModal('signup')} className="text-xs sm:text-sm">
                 Get started
               </Button>
-            </>
+            </div>
           )}
         </nav>
       </div>
@@ -175,14 +221,12 @@ export function Header() {
   )
 }
 
-// Avoid unused-import warnings
-
 export function Footer() {
   const setView = useOhwasisStore((s) => s.setView)
   const AEVIBRON_CONTACT = process.env.NEXT_PUBLIC_AEVIBRON_CONTACT_EMAIL || 'aevibron@gmail.com'
   return (
     <footer className="mt-auto border-t border-border/60 bg-muted/30">
-      <div className="container mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <BrandMark size={20} className="text-primary" />
           <span className="font-semibold tracking-tight text-foreground">

@@ -1116,3 +1116,50 @@ model SupportMessage {
 
   @@index([ticketId, createdAt])
 }
+
+// ---------------------------------------------------------------------------
+// Platform-level advertisements (managed by platform admin)
+// ---------------------------------------------------------------------------
+
+model Advertisement {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  imageUrl     String?
+  linkUrl      String?
+  // Where the ad appears: splash (loading screen), top_banner (marketplace top)
+  placement    String   @default("top_banner")
+  // Schedule
+  startsAt     DateTime @default(now())
+  endsAt       DateTime?
+  active       Boolean  @default(false)
+  // Targeting: which user types see this ad (JSON array: ["customer", "business_owner", "admin"])
+  targetAudience String @default("[\"customer\"]")
+  // Click tracking
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([active, placement])
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic feature flags (managed by platform admin via CMS)
+// ---------------------------------------------------------------------------
+
+model FeatureFlag {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  label        String
+  description  String?
+  enabled      Boolean  @default(false)
+  // Which plans/roles can access this feature (JSON array)
+  targetRoles  String   @default("[\"customer\",\"business_owner\"]")
+  // Feature configuration (JSON — admin can set custom config per feature)
+  config       String   @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([enabled])
+}

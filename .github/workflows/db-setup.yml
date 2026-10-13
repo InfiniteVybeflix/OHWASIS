@@ -1,0 +1,34 @@
+name: Database Setup
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  db-setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Push schema to database
+        run: bunx prisma db push --accept-data-loss
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Seed admin account
+        run: bun run scripts/seed-admin.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
