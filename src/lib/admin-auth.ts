@@ -1,48 +1,32 @@
 // src/lib/admin-auth.ts — admin authentication via env-configured credentials.
 //
-// The platform operator account is bootstrapped via env vars:
+// The platform operator account is authenticated via env vars:
 //   ADMIN_EMAIL — the operator's email
 //   ADMIN_PASSWORD_HASH — scrypt hash (same format as User.passwordHash)
 //
-// On login, if the submitted email matches ADMIN_EMAIL, we verify the
-// password against ADMIN_PASSWORD_HASH. If valid, we ensure a User row
-// exists with globalRole=2 + accountType=PLATFORM_OPERATOR, and issue a
-// normal session. The operator lands directly in the admin console.
-//
-// If ADMIN_PASSWORD_HASH is not set, we fall back to a dev-only default
-// password "admin-password" with a console warning. NEVER rely on this
-// in production.
+// If ADMIN_EMAIL or ADMIN_PASSWORD_HASH is not set, the system throws.
+// There are NO dev fallbacks — this is production code.
 
 import { prisma } from '@/lib/db'
 import { hashPassword, verifyPassword } from '@/lib/session'
 
-const DEV_DEFAULT_PASSWORD = 'admin-password'
-
-function getAdminEmail(): string | null {
+function getAdminEmail(): string {
   const env = process.env.ADMIN_EMAIL
-  if (env && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env)) return env.toLowerCase()
-  // Dev fallback
-  if (process.env.NODE_ENV !== 'production') return 'admin@ohwasis.local'
-  return null
+  if (!env) {
+    throw new Error('ADMIN_EMAIL environment variable is required. Set it in your .env or Vercel environment variables.')
+  }
+  return env.toLowerCase()
 }
 
 async function getAdminPasswordHash(): Promise<string> {
-  // If env provides a hash, use it
   const envHash = process.env.ADMIN_PASSWORD_HASH
-  if (envHash && envHash.startsWith('scrypt$')) return envHash
-  // Dev fallback: hash the default password at module load time
-  if (process.env.NODE_ENV !== 'production') {
-    console.warn('[ohwasis.admin-auth] ADMIN_PASSWORD_HASH not set — using dev default "admin-password". NOT SAFE FOR PRODUCTION.')
-    return await hashPassword(DEV_DEFAULT_PASSWORD)
+  if (!envHash || !envHash.startsWith('scrypt$')) {
+    throw new Error(
+      'ADMIN_PASSWORD_HASH environment variable is required and must be a scrypt hash. ' +
+      'Generate with: node -e "const crypto=require(\'crypto\');const s=crypto.randomBytes(16).toString(\'hex\');const h=crypto.scryptSync(\'YOUR_PASSWORD\',s,64).toString(\'hex\');console.log(\'scrypt$\'+s+\'$\'+h)"'
+    )
   }
-  throw new Error('ADMIN_PASSWORD_HASH must be set in production')
-}
-
-let cachedHash: string | null = null
-async function resolveAdminPasswordHash(): Promise<string> {
-  if (cachedHash) return cachedHash
-  cachedHash = await getAdminPasswordHash()
-  return cachedHash
+  return envHash
 }
 
 /**
@@ -55,8 +39,8 @@ async function resolveAdminPasswordHash(): Promise<string> {
  */
 export async function tryAdminLogin(email: string, password: string): Promise<boolean> {
   const adminEmail = getAdminEmail()
-  if (!adminEmail || email.toLowerCase() !== adminEmail) return false
-  const expectedHash = await resolveAdminPasswordHash()
+  if (email.toLowerCase() !== adminEmail) return false
+  const expectedHash = await getAdminPasswordHash()
   if (!verifyPassword(password, expectedHash)) return false
   return true
 }
@@ -69,8 +53,7 @@ export async function ensureAdminUser(email: string) {
   const adminEmail = email.toLowerCase()
   let user = await prisma.user.findUnique({ where: { email: adminEmail } })
   if (!user) {
-    // Create with the env-configured password hash (so the user row is consistent)
-    const expectedHash = await resolveAdminPasswordHash()
+    const expectedHash = await getAdminPasswordHash()
     user = await prisma.user.create({
       data: {
         email: adminEmail,
@@ -82,21 +65,10 @@ export async function ensureAdminUser(email: string) {
       },
     })
   } else if (user.globalRole < 2 || user.accountType !== 'PLATFORM_OPERATOR') {
-    // Upgrade existing user to platform operator
     user = await prisma.user.update({
       where: { id: user.id },
       data: { globalRole: 2, accountType: 'PLATFORM_OPERATOR', status: 'ACTIVE' },
     })
   }
   return user
-}
-
-/**
- * For local dev: return the admin email + default password so the UI can
- * show a "Dev admin login" hint. In production this returns nulls.
- */
-export function getDevAdminCredentials(): { email: string; password: string } | null {
-  if (process.env.NODE_ENV === 'production') return null
-  if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD_HASH) return null
-  return { email: 'admin@ohwasis.local', password: DEV_DEFAULT_PASSWORD }
 }

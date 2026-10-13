@@ -95,7 +95,7 @@ export function PlatformAdminView() {
         <ShieldCheck className="mx-auto h-10 w-10 text-muted-foreground" />
         <p className="mt-2 text-muted-foreground">Your account does not have platform operator access.</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Demo accounts: admin@ohwasis.local / admin-password (run seed first), or owner@aquarefill.example / merchant-password for merchant view.
+          Configure admin credentials via ADMIN_EMAIL and ADMIN_PASSWORD_HASH environment variables.
         </p>
         <Button className="mt-4" variant="outline" onClick={() => void seed()} disabled={seedLoading}>
           {seedLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

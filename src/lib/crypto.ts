@@ -4,10 +4,9 @@
 // Aevibron API keys) at rest. One-way hashing is NOT appropriate here because
 // we must later recover the plaintext to call the provider.
 //
-// The master key is sourced from MASTER_ENCRYPTION_KEY (32-byte base64 or hex).
-// In production this MUST be a KMS-managed key; in this sandbox it falls back
-// to a derived dev-only key. The fallback is logged loudly and is NOT safe
-// for production use. See SECURITY.md.
+// The master key is sourced from MASTER_ENCRYPTION_KEY (32-byte hex or base64).
+// If MASTER_ENCRYPTION_KEY is not set, the system throws — there are NO
+// fallbacks. This is production code.
 
 import crypto from 'crypto'
 
@@ -17,30 +16,31 @@ const TAG_LEN = 16
 
 function masterKey(): Buffer {
   const raw = process.env.MASTER_ENCRYPTION_KEY
-  if (raw && raw.length > 0) {
-    // Accept either hex or base64 of 32 bytes
-    let buf: Buffer | null = null
-    if (/^[0-9a-fA-F]+$/.test(raw) && raw.length === 64) {
-      buf = Buffer.from(raw, 'hex')
-    } else {
-      try {
-        buf = Buffer.from(raw, 'base64')
-        if (buf.length !== 32) buf = null
-      } catch {
-        buf = null
-      }
+  if (!raw || raw.length === 0) {
+    throw new Error(
+      'MASTER_ENCRYPTION_KEY environment variable is required. ' +
+      'Generate with: openssl rand -hex 32'
+    )
+  }
+  // Accept either hex or base64 of 32 bytes
+  let buf: Buffer | null = null
+  if (/^[0-9a-fA-F]+$/.test(raw) && raw.length === 64) {
+    buf = Buffer.from(raw, 'hex')
+  } else {
+    try {
+      buf = Buffer.from(raw, 'base64')
+      if (buf.length !== 32) buf = null
+    } catch {
+      buf = null
     }
-    if (buf && buf.length === 32) return buf
   }
-  // Dev-only fallback. NEVER rely on this in production.
-  // Derive a deterministic key from a stable salt so the sandbox still works.
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('MASTER_ENCRYPTION_KEY must be set in production')
+  if (!buf || buf.length !== 32) {
+    throw new Error(
+      'MASTER_ENCRYPTION_KEY must be 32 bytes (64 hex chars or 44 base64 chars). ' +
+      'Generate with: openssl rand -hex 32'
+    )
   }
-  console.warn(
-    '[ohwasis.crypto] MASTER_ENCRYPTION_KEY not set — using insecure dev-only key. NOT SAFE FOR PRODUCTION.',
-  )
-  return crypto.createHash('sha256').update('ohwasis-dev-only-key-DO-NOT-USE-IN-PROD').digest()
+  return buf
 }
 
 export interface EncryptedBlob {
