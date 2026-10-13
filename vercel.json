@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "installCommand": "bun install",
+  "ignoreCommand": "git log -m -1 --pretty=%B | grep -q '\\[skip ci\\]' && exit 0 || exit 1"
+}

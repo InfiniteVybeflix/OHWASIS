@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Loader2, ShieldCheck, Users, Bot, Database, KeyRound, CheckCircle2, XCircle, Megaphone, Toggle, User as UserIcon, Plus, Trash2, Switch as SwitchIcon } from 'lucide-react'
+import { Loader2, ShieldCheck, Users, Bot, Database, KeyRound, CheckCircle2, XCircle, Megaphone, ToggleLeft, User as UserIcon, Plus, Trash2 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 
 interface MerchantDTO {
@@ -130,7 +130,7 @@ export function PlatformAdminView() {
           <TabsTrigger value="users"><UserIcon className="mr-1.5 h-3.5 w-3.5" /> Users</TabsTrigger>
           <TabsTrigger value="ai-requests"><Bot className="mr-1.5 h-3.5 w-3.5" /> AI requests</TabsTrigger>
           <TabsTrigger value="ads"><Megaphone className="mr-1.5 h-3.5 w-3.5" /> Ads</TabsTrigger>
-          <TabsTrigger value="features"><Toggle className="mr-1.5 h-3.5 w-3.5" /> Features</TabsTrigger>
+          <TabsTrigger value="features"><ToggleLeft className="mr-1.5 h-3.5 w-3.5" /> Features</TabsTrigger>
           <TabsTrigger value="audit">Audit log</TabsTrigger>
         </TabsList>
         <TabsContent value="merchants" className="mt-4"><MerchantsPanel /></TabsContent>
@@ -420,7 +420,6 @@ function AuditPanel() {
 
 // Avoid unused import warnings
 void XCircle
-void SwitchIcon
 
 // ---------------------------------------------------------------------------
 // Users Panel — admin can view all users + suspend accounts

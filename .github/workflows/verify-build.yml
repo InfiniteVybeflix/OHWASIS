@@ -1,0 +1,60 @@
+name: Build Verification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run ESLint
+        run: bun run lint
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Build
+        id: build
+        run: bun run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MASTER_ENCRYPTION_KEY: ${{ secrets.MASTER_ENCRYPTION_KEY }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_AEVIBRON_CONTACT_EMAIL: aevibron@gmail.com
+
+      - name: Save build errors as artifact
+        if: failure()
+        run: |
+          mkdir -p build-errors
+          echo "Build failed at $(date -u)" > build-errors/summary.txt
+          echo "Commit: ${{ github.sha }}" >> build-errors/summary.txt
+          echo "Branch: ${{ github.ref }}" >> build-errors/summary.txt
+          echo "Actor: ${{ github.actor }}" >> build-errors/summary.txt
+          echo "---" >> build-errors/summary.txt
+          echo "Check the build logs above for the full error output." >> build-errors/summary.txt
+
+      - name: Upload error artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-errors-${{ github.run_number }}
+          path: build-errors/
+          retention-days: 30
+
+      - name: Build succeeded
+        if: success()
+        run: echo "✅ Build verified — safe to deploy to Vercel"
