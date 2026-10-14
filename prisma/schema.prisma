@@ -19,7 +19,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -194,6 +194,7 @@ model Tenant {
   promotions          Promotion[]
   // v4: Support system
   supportTickets      SupportTicket[]
+  advertisements      Advertisement[]
 
   @@index([handle])
   @@index([status])
@@ -1124,24 +1125,52 @@ model SupportMessage {
 model Advertisement {
   id           String   @id @default(cuid())
   title        String
-  description  String?
+  description  String
+  // Business / advertiser association (optional — can be platform-wide)
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // Image
   imageUrl     String?
+  // Destination + CTA
   linkUrl      String?
-  // Where the ad appears: splash (loading screen), top_banner (marketplace top)
+  ctaLabel     String   @default("Learn More")
+  ctaAction    String   @default("learn_more")  // visit_store, shop_now, contact_business, view_offer, learn_more, custom
+  // Placement: top_banner, featured_business, marketplace_feed, category_page, search_results, storefront, popup
   placement    String   @default("top_banner")
   // Schedule
   startsAt     DateTime @default(now())
   endsAt       DateTime?
   active       Boolean  @default(false)
-  // Targeting: which user types see this ad (JSON array: ["customer", "business_owner", "admin"])
+  status       String   @default("draft")  // draft, scheduled, active, paused, expired, archived
+  // Featured / sponsored
+  isSponsored  Boolean  @default(true)
+  sponsoredLabel String @default("Sponsored")
+  // Display priority (higher = shown first)
+  priority     Int      @default(0)
+  // Device targeting
+  deviceTarget String   @default("all")  // all, mobile, tablet, desktop
+  // Targeting: which user types see this ad
   targetAudience String @default("[\"customer\"]")
-  // Click tracking
+  // Banner sizing controls
+  maxWidth     Int      @default(1280)  // px
+  maxHeight    Int      @default(200)   // px
+  minHeight    Int      @default(80)    // px
+  imageFit     String   @default("cover")  // contain, cover, fill
+  imagePosition String  @default("center")  // center, top, bottom, left, right
+  // Appearance / theme (JSON)
+  theme        String   @default("{}")
+  // Analytics
   impressions  Int      @default(0)
   clicks       Int      @default(0)
+  // Frequency limits
+  impressionLimit Int?  // max total impressions
+  perVisitorFreq  Int    @default(0)  // max impressions per visitor per session (0 = unlimited)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@index([active, placement])
+  @@index([active, placement, status])
+  @@index([status, priority])
+  @@index([tenantId])
 }
 
 // ---------------------------------------------------------------------------

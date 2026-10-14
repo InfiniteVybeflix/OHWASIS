@@ -14,8 +14,9 @@ import {
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Loader2, ShieldCheck, Users, Bot, Database, KeyRound, CheckCircle2, XCircle, Megaphone, ToggleLeft, User as UserIcon, Plus, Trash2 } from 'lucide-react'
+import { Loader2, ShieldCheck, Users, Bot, Database, KeyRound, CheckCircle2, XCircle, Megaphone, ToggleLeft, User as UserIcon, Plus, Trash2, Edit3 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
+import { AdsPanel } from '@/components/ohwasis/AdsPanel'
 
 interface MerchantDTO {
   id: string
@@ -506,144 +507,8 @@ function UsersPanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Ads Panel — admin can create/manage advertisements
+// Ads Panel — now imported from @/components/ohwasis/AdsPanel (full-featured)
 // ---------------------------------------------------------------------------
-
-function AdsPanel() {
-  const pushToast = useOhwasisStore((s) => s.pushToast)
-  const [ads, setAds] = useState<Array<{ id: string; title: string; description: string | null; imageUrl: string | null; linkUrl: string | null; placement: string; active: boolean; impressions: number; clicks: number; createdAt: string }>>([])
-  const [loading, setLoading] = useState(true)
-  const [showCreate, setShowCreate] = useState(false)
-
-  const load = async () => {
-    setLoading(true)
-    try {
-      const data = await apiFetch<{ ads: typeof ads }>('/api/admin/ads')
-      setAds(data.ads)
-    } catch { /* ignore */ } finally { setLoading(false) }
-  }
-
-  useEffect(() => { void load() }, [])
-
-  const toggleActive = async (id: string, currentActive: boolean) => {
-    try {
-      await apiFetch(`/api/admin/ads/${id}`, { method: 'PATCH', body: JSON.stringify({ active: !currentActive }) })
-      pushToast({ type: 'success', message: `Ad ${!currentActive ? 'enabled' : 'disabled'}` })
-      void load()
-    } catch (err) {
-      pushToast({ type: 'error', message: err instanceof Error ? err.message : 'Failed' })
-    }
-  }
-
-  const remove = async (id: string) => {
-    try {
-      await apiFetch(`/api/admin/ads/${id}`, { method: 'DELETE' })
-      pushToast({ type: 'success', message: 'Ad deleted' })
-      void load()
-    } catch {
-      pushToast({ type: 'error', message: 'Delete failed' })
-    }
-  }
-
-  if (loading) return <Skeleton className="h-40" />
-
-  return (
-    <div className="space-y-3">
-      <div className="flex justify-between">
-        <p className="text-sm text-muted-foreground">{ads.length} advertisement(s). No ads appear by default — only when you enable them.</p>
-        <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="mr-1 h-4 w-4" /> New ad</Button>
-      </div>
-      {ads.length === 0 ? (
-        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No advertisements configured.</CardContent></Card>
-      ) : (
-        <ul className="space-y-2">
-          {ads.map((ad) => (
-            <li key={ad.id} className="flex items-center justify-between rounded border border-border/60 p-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{ad.title}</span>
-                  <Badge variant={ad.active ? 'default' : 'secondary'} className="text-[10px]">{ad.active ? 'Active' : 'Inactive'}</Badge>
-                  <Badge variant="outline" className="text-[10px]">{ad.placement}</Badge>
-                </div>
-                {ad.description && <div className="text-xs text-muted-foreground">{ad.description}</div>}
-                <div className="text-[10px] text-muted-foreground">{ad.impressions} impressions · {ad.clicks} clicks</div>
-              </div>
-              <div className="flex gap-1">
-                <Button size="sm" variant="outline" onClick={() => void toggleActive(ad.id, ad.active)}>
-                  {ad.active ? 'Disable' : 'Enable'}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => void remove(ad.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <CreateAdDialog open={showCreate} onOpenChange={setShowCreate} onSaved={() => { void load() }} />
-    </div>
-  )
-}
-
-function CreateAdDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; onSaved: () => void }) {
-  const pushToast = useOhwasisStore((s) => s.pushToast)
-  const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', imageUrl: '', linkUrl: '', placement: 'top_banner', active: false })
-
-  const submit = async () => {
-    setLoading(true)
-    try {
-      await apiFetch('/api/admin/ads', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...form,
-          imageUrl: form.imageUrl || undefined,
-          linkUrl: form.linkUrl || undefined,
-        }),
-      })
-      pushToast({ type: 'success', message: 'Ad created' })
-      onSaved()
-      onOpenChange(false)
-      setForm({ title: '', description: '', imageUrl: '', linkUrl: '', placement: 'top_banner', active: false })
-    } catch (err) {
-      pushToast({ type: 'error', message: err instanceof Error ? err.message : 'Failed' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Create advertisement</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>Title</Label><Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} /></div>
-          <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} /></div>
-          <div><Label>Image URL (optional)</Label><Input value={form.imageUrl} onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))} placeholder="https://…" /></div>
-          <div><Label>Link URL (optional)</Label><Input value={form.linkUrl} onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))} placeholder="https://…" /></div>
-          <div>
-            <Label>Placement</Label>
-            <Select value={form.placement} onValueChange={(v) => setForm((f) => ({ ...f, placement: v }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="top_banner">Top Banner (marketplace)</SelectItem>
-                <SelectItem value="splash">Splash Screen (app loading)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch checked={form.active} onCheckedChange={(v) => setForm((f) => ({ ...f, active: v }))} />
-            <Label className="text-sm font-normal">Active immediately</Label>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={() => void submit()} disabled={loading || !form.title}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Create ad
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Features Panel — admin can enable/disable features without code changes
@@ -654,6 +519,7 @@ function FeaturesPanel() {
   const [features, setFeatures] = useState<Array<{ id: string; key: string; label: string; description: string | null; enabled: boolean; targetRoles: string[]; config: Record<string, unknown> }>>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
+  const [editingFeature, setEditingFeature] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -676,6 +542,7 @@ function FeaturesPanel() {
   }
 
   const remove = async (id: string) => {
+    if (!confirm('Delete this feature flag?')) return
     try {
       await apiFetch(`/api/admin/features/${id}`, { method: 'DELETE' })
       pushToast({ type: 'success', message: 'Feature deleted' })
@@ -690,58 +557,124 @@ function FeaturesPanel() {
   return (
     <div className="space-y-3">
       <div className="flex justify-between">
-        <p className="text-sm text-muted-foreground">{features.length} feature(s). Toggle features on/off without code changes.</p>
-        <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="mr-1 h-4 w-4" /> New feature</Button>
+        <p className="text-sm text-muted-foreground">{features.length} feature(s). Toggle features on/off, configure placement and behavior — no code changes needed.</p>
+        <Button size="sm" onClick={() => { setEditingFeature(null); setShowCreate(true) }}><Plus className="mr-1 h-4 w-4" /> New feature</Button>
       </div>
       {features.length === 0 ? (
-        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No feature flags configured. Create one to control features dynamically.</CardContent></Card>
+        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No feature flags configured. Create one to control features dynamically (e.g. subscriptions, promotions, wallet).</CardContent></Card>
       ) : (
         <ul className="space-y-2">
           {features.map((f) => (
             <li key={f.id} className="flex items-center justify-between rounded border border-border/60 p-3">
-              <div>
-                <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <code className="text-xs font-mono font-bold">{f.key}</code>
                   <span className="text-sm font-medium">{f.label}</span>
                   <Badge variant={f.enabled ? 'default' : 'secondary'} className="text-[10px]">{f.enabled ? 'Enabled' : 'Disabled'}</Badge>
                 </div>
                 {f.description && <div className="text-xs text-muted-foreground">{f.description}</div>}
-                <div className="text-[10px] text-muted-foreground">Target: {f.targetRoles.join(', ')}</div>
+                <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+                  <span>Target: {f.targetRoles.join(', ')}</span>
+                  {Object.keys(f.config).length > 0 && <span>Config: {Object.keys(f.config).join(', ')}</span>}
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={f.enabled} onCheckedChange={() => void toggleEnabled(f.id, f.enabled)} />
+                <Button size="sm" variant="ghost" onClick={() => { setEditingFeature(f.id); setShowCreate(true) }}><Edit3 className="h-3.5 w-3.5" /></Button>
                 <Button size="sm" variant="ghost" onClick={() => void remove(f.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>
             </li>
           ))}
         </ul>
       )}
-      <CreateFeatureDialog open={showCreate} onOpenChange={setShowCreate} onSaved={() => { void load() }} />
+      <CreateFeatureDialog
+        open={showCreate}
+        onOpenChange={setShowCreate}
+        onSaved={() => { void load() }}
+        editingId={editingFeature}
+        existingFeatures={features}
+      />
     </div>
   )
 }
 
-function CreateFeatureDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; onSaved: () => void }) {
+function CreateFeatureDialog({
+  open, onOpenChange, onSaved, editingId, existingFeatures,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onSaved: () => void
+  editingId: string | null
+  existingFeatures: Array<{ id: string; key: string; label: string; description: string | null; enabled: boolean; targetRoles: string[]; config: Record<string, unknown> }>
+}) {
   const pushToast = useOhwasisStore((s) => s.pushToast)
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ key: '', label: '', description: '', enabled: false })
+  const editing = editingId ? existingFeatures.find((f) => f.id === editingId) : null
+  const [form, setForm] = useState({
+    key: editing?.key ?? '',
+    label: editing?.label ?? '',
+    description: editing?.description ?? '',
+    enabled: editing?.enabled ?? false,
+    targetRoles: editing?.targetRoles ?? ['customer', 'business_owner'],
+    placement: (editing?.config?.placement as string) ?? 'settings',
+    configText: JSON.stringify(editing?.config ?? {}, null, 2),
+  })
+
+  useEffect(() => {
+    if (editing) {
+      setForm({
+        key: editing.key,
+        label: editing.label,
+        description: editing.description ?? '',
+        enabled: editing.enabled,
+        targetRoles: editing.targetRoles,
+        placement: (editing.config?.placement as string) ?? 'settings',
+        configText: JSON.stringify(editing.config ?? {}, null, 2),
+      })
+    } else {
+      setForm({ key: '', label: '', description: '', enabled: false, targetRoles: ['customer', 'business_owner'], placement: 'settings', configText: '{}' })
+    }
+  }, [editing, open])
+
+  const toggleRole = (role: string) => {
+    setForm((f) => ({
+      ...f,
+      targetRoles: f.targetRoles.includes(role) ? f.targetRoles.filter((r) => r !== role) : [...f.targetRoles, role],
+    }))
+  }
 
   const submit = async () => {
     setLoading(true)
     try {
-      await apiFetch('/api/admin/features', {
-        method: 'POST',
-        body: JSON.stringify({
-          key: form.key.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-          label: form.label,
-          description: form.description || undefined,
-          enabled: form.enabled,
-        }),
-      })
-      pushToast({ type: 'success', message: 'Feature created' })
+      // Parse config JSON
+      let config: Record<string, unknown> = {}
+      try {
+        config = JSON.parse(form.configText)
+      } catch {
+        pushToast({ type: 'error', message: 'Config JSON is invalid' })
+        setLoading(false)
+        return
+      }
+      config.placement = form.placement
+
+      const body = {
+        key: form.key.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+        label: form.label,
+        description: form.description || undefined,
+        enabled: form.enabled,
+        targetRoles: form.targetRoles,
+        config,
+      }
+
+      if (editingId) {
+        await apiFetch(`/api/admin/features/${editingId}`, { method: 'PATCH', body: JSON.stringify(body) })
+        pushToast({ type: 'success', message: 'Feature updated' })
+      } else {
+        await apiFetch('/api/admin/features', { method: 'POST', body: JSON.stringify(body) })
+        pushToast({ type: 'success', message: 'Feature created' })
+      }
       onSaved()
       onOpenChange(false)
-      setForm({ key: '', label: '', description: '', enabled: false })
     } catch (err) {
       pushToast({ type: 'error', message: err instanceof Error ? err.message : 'Failed' })
     } finally {
@@ -749,14 +682,62 @@ function CreateFeatureDialog({ open, onOpenChange, onSaved }: { open: boolean; o
     }
   }
 
+  const PLACEMENTS = [
+    { value: 'settings', label: 'Settings page' },
+    { value: 'marketplace', label: 'Marketplace' },
+    { value: 'dashboard', label: 'Business dashboard' },
+    { value: 'sidebar', label: 'Sidebar navigation' },
+    { value: 'modal', label: 'Modal / popup' },
+    { value: 'hidden', label: 'Hidden (API only)' },
+  ]
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Create feature flag</DialogTitle></DialogHeader>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader><DialogTitle>{editingId ? 'Edit feature' : 'Create feature flag'}</DialogTitle></DialogHeader>
         <div className="space-y-3">
-          <div><Label>Key (lowercase, underscores)</Label><Input value={form.key} onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))} placeholder="subscriptions" /></div>
+          <div>
+            <Label>Key (lowercase, underscores)</Label>
+            <Input value={form.key} onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))} placeholder="subscriptions" disabled={!!editingId} />
+            <p className="text-[10px] text-muted-foreground">Unique identifier — cannot be changed after creation</p>
+          </div>
           <div><Label>Label</Label><Input value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} placeholder="Subscription Plans" /></div>
           <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} /></div>
+          <div>
+            <Label>Where should this feature appear?</Label>
+            <Select value={form.placement} onValueChange={(v) => setForm((f) => ({ ...f, placement: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PLACEMENTS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Target roles</Label>
+            <div className="flex flex-wrap gap-2">
+              {['customer', 'business_owner', 'admin'].map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => toggleRole(role)}
+                  className={`rounded-full border px-3 py-1 text-xs ${form.targetRoles.includes(role) ? 'border-primary bg-primary/5 text-primary' : 'border-border'}`}
+                >
+                  {role.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label>Configuration (JSON)</Label>
+            <Textarea
+              value={form.configText}
+              onChange={(e) => setForm((f) => ({ ...f, configText: e.target.value }))}
+              rows={4}
+              className="font-mono text-xs"
+              placeholder='{"plans": ["free", "pro"], "trial_days": 14}'
+            />
+            <p className="text-[10px] text-muted-foreground">Store any feature-specific config here (plans, pricing, limits, etc.)</p>
+          </div>
           <div className="flex items-center gap-2">
             <Switch checked={form.enabled} onCheckedChange={(v) => setForm((f) => ({ ...f, enabled: v }))} />
             <Label className="text-sm font-normal">Enabled</Label>
@@ -765,7 +746,7 @@ function CreateFeatureDialog({ open, onOpenChange, onSaved }: { open: boolean; o
         <DialogFooter>
           <Button onClick={() => void submit()} disabled={loading || !form.key || !form.label}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Create feature
+            {editingId ? 'Save changes' : 'Create feature'}
           </Button>
         </DialogFooter>
       </DialogContent>

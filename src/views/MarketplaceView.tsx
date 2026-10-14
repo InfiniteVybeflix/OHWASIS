@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { motion } from 'framer-motion'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 import { HamburgerMenu } from '@/components/ohwasis/HamburgerMenu'
+import { AdRenderer, type AdData } from '@/components/ohwasis/AdRenderer'
 import {
   Search,
   Star,
@@ -52,15 +53,7 @@ interface PromotionDTO {
   }
 }
 
-interface AdDTO {
-  id: string
-  title: string
-  description: string | null
-  imageUrl: string | null
-  linkUrl: string | null
-  placement: string
-  targetAudience: string[]
-}
+type AdDTO = AdData
 
 interface ProductImage {
   url: string
@@ -271,22 +264,9 @@ export function MarketplaceView() {
         <section className="container mx-auto max-w-7xl px-4 pt-2">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {ads.map((ad) => (
-              <a
-                key={ad.id}
-                href={ad.linkUrl || '#'}
-                target={ad.linkUrl ? '_blank' : undefined}
-                rel={ad.linkUrl ? 'noopener noreferrer' : undefined}
-                className="flex shrink-0 items-center gap-3 rounded-lg border border-amber-500/30 bg-gradient-to-r from-amber-50 to-amber-50/50 p-3 dark:from-amber-950/20 dark:to-transparent"
-                style={{ minWidth: '300px' }}
-              >
-                {ad.imageUrl && (
-                  <img src={ad.imageUrl} alt={ad.title} className="h-12 w-12 rounded-lg object-cover" />
-                )}
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-amber-900 dark:text-amber-100">{ad.title}</div>
-                  {ad.description && <div className="text-xs text-amber-700 dark:text-amber-300">{ad.description}</div>}
-                </div>
-              </a>
+              <div key={ad.id} className="shrink-0">
+                <AdRenderer ad={ad} />
+              </div>
             ))}
           </div>
         </section>
