@@ -222,7 +222,7 @@ function MerchantsPanel() {
       )}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>{editing?.displayName}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing?.displayName}</DialogTitle><DialogDescription>Merchant details and management.</DialogDescription></DialogHeader>
           {editing && (
             <div className="space-y-2 text-sm">
               <Row label="Handle" value={`@${editing.handle}`} />
@@ -694,7 +694,7 @@ function CreateFeatureDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle>{editingId ? 'Edit feature' : 'Create feature flag'}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{editingId ? 'Edit feature' : 'Create feature flag'}</DialogTitle><DialogDescription>Configure a feature flag to control app behavior dynamically.</DialogDescription></DialogHeader>
         <div className="space-y-3">
           <div>
             <Label>Key (lowercase, underscores)</Label>

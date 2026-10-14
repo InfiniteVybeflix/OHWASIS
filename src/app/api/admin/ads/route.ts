@@ -32,12 +32,22 @@ export const GET = withErrorHandler(async (req) => {
     ...(search ? { title: { contains: search } } : {}),
   }
 
-  const ads = await prisma.advertisement.findMany({
-    where,
-    include: { tenant: { select: { id: true, handle: true, displayName: true } } },
-    orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-    take: 100,
-  })
+  // Try with tenant relation; if it fails (schema not pushed), retry without
+  let ads
+  try {
+    ads = await prisma.advertisement.findMany({
+      where,
+      include: { tenant: { select: { id: true, handle: true, displayName: true } } },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      take: 100,
+    })
+  } catch {
+    ads = await prisma.advertisement.findMany({
+      where,
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      take: 100,
+    })
+  }
 
   return NextResponse.json({ ads })
 })

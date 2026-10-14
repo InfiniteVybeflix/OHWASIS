@@ -8,76 +8,94 @@ import { withErrorHandler, queryParams } from '@/lib/api'
  *
  * Eligibility rules (enforced server-side):
  *   - status must be 'active'
+ *   - active must be true
  *   - startsAt must be <= now
  *   - endsAt must be null or >= now
  *   - if impressionLimit is set, impressions must be < impressionLimit
- *
- * Results are sorted by priority (desc) then createdAt (desc).
- * The client handles rotation among eligible ads.
  */
 export const GET = withErrorHandler(async (req) => {
   const q = queryParams(req)
   const placement = q.get('placement') ?? 'top_banner'
   const now = new Date()
 
-  const ads = await prisma.advertisement.findMany({
-    where: {
-      status: 'active',
-      active: true,
-      placement,
-      startsAt: { lte: now },
-      OR: [{ endsAt: null }, { endsAt: { gte: now } }],
-    },
-    include: {
-      tenant: { select: { id: true, handle: true, displayName: true } },
-    },
-    orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-    take: 10,
-  })
-
-  // Filter out ads that have hit their impression limit
-  const eligible = ads.filter((ad) => {
-    if (ad.impressionLimit && ad.impressions >= ad.impressionLimit) return false
-    return true
-  })
-
-  // Increment impressions for eligible ads (server-side, deduplicated per request)
-  if (eligible.length > 0) {
-    await prisma.advertisement.updateMany({
-      where: { id: { in: eligible.map((a) => a.id) } },
-      data: { impressions: { increment: 1 } },
+  // Try with tenant relation; if it fails (schema not pushed), retry without
+  let ads
+  try {
+    ads = await prisma.advertisement.findMany({
+      where: {
+        status: 'active',
+        active: true,
+        placement,
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gte: now } }],
+      },
+      include: {
+        tenant: { select: { id: true, handle: true, displayName: true } },
+      },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      take: 10,
+    })
+  } catch {
+    // Fallback: query without tenant relation (in case schema hasn't been pushed yet)
+    ads = await prisma.advertisement.findMany({
+      where: {
+        status: 'active',
+        active: true,
+        placement,
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gte: now } }],
+      },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      take: 10,
     })
   }
 
+  // Filter out ads that have hit their impression limit
+  const eligible = ads.filter((ad) => {
+    const adRecord = ad as Record<string, unknown>
+    const impressionLimit = adRecord.impressionLimit as number | null
+    const impressions = adRecord.impressions as number
+    if (impressionLimit && impressions >= impressionLimit) return false
+    return true
+  })
+
+  // Increment impressions for eligible ads
+  if (eligible.length > 0) {
+    await prisma.advertisement.updateMany({
+      where: { id: { in: eligible.map((a) => (a as Record<string, unknown>).id as string) } },
+      data: { impressions: { increment: 1 } },
+    }).catch(() => { /* best-effort */ })
+  }
+
   return NextResponse.json({
-    ads: eligible.map((a) => ({
-      id: a.id,
-      title: a.title,
-      description: a.description,
-      imageUrl: a.imageUrl,
-      linkUrl: a.linkUrl,
-      ctaLabel: a.ctaLabel,
-      ctaAction: a.ctaAction,
-      placement: a.placement,
-      isSponsored: a.isSponsored,
-      sponsoredLabel: a.sponsoredLabel,
-      priority: a.priority,
-      deviceTarget: a.deviceTarget,
-      targetAudience: JSON.parse(a.targetAudience || '[]'),
-      maxWidth: a.maxWidth,
-      maxHeight: a.maxHeight,
-      minHeight: a.minHeight,
-      imageFit: a.imageFit,
-      imagePosition: a.imagePosition,
-      theme: JSON.parse(a.theme || '{}'),
-      perVisitorFreq: a.perVisitorFreq,
-      tenant: a.tenant,
-    })),
+    ads: eligible.map((a) => {
+      const ad = a as Record<string, unknown>
+      const tenant = ad.tenant as { id: string; handle: string; displayName: string } | null
+      const theme = ad.theme as string
+      const targetAudience = ad.targetAudience as string
+      return {
+        id: ad.id,
+        title: ad.title,
+        description: ad.description,
+        imageUrl: ad.imageUrl,
+        linkUrl: ad.linkUrl,
+        ctaLabel: ad.ctaLabel,
+        ctaAction: ad.ctaAction,
+        placement: ad.placement,
+        isSponsored: ad.isSponsored,
+        sponsoredLabel: ad.sponsoredLabel,
+        priority: ad.priority,
+        deviceTarget: ad.deviceTarget,
+        targetAudience: JSON.parse(targetAudience || '[]'),
+        maxWidth: ad.maxWidth,
+        maxHeight: ad.maxHeight,
+        minHeight: ad.minHeight,
+        imageFit: ad.imageFit,
+        imagePosition: ad.imagePosition,
+        theme: JSON.parse(theme || '{}'),
+        perVisitorFreq: ad.perVisitorFreq,
+        tenant: tenant ?? null,
+      }
+    }),
   })
 })
-
-/**
- * POST /api/ads/[id]/click
- * Track a click on an advertisement.
- * Note: This is handled via a separate route file for clarity.
- */

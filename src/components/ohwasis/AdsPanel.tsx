@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
@@ -489,6 +489,7 @@ function AdEditorDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{editingAd ? 'Edit advertisement' : 'Create advertisement'}</DialogTitle>
+          <DialogDescription>Configure content, appearance, schedule, and preview your advertisement.</DialogDescription>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab}>
@@ -512,10 +513,10 @@ function AdEditorDialog({
             </div>
             <div>
               <Label>Business / Advertiser</Label>
-              <Select value={form.tenantId} onValueChange={(v) => update('tenantId', v)}>
+              <Select value={form.tenantId || 'none'} onValueChange={(v) => update('tenantId', v === 'none' ? '' : v)}>
                 <SelectTrigger><SelectValue placeholder="None (platform-wide)" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None (platform-wide)</SelectItem>
+                  <SelectItem value="none">None (platform-wide)</SelectItem>
                   {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.displayName}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -783,6 +784,7 @@ function AdAnalyticsDialog({ ad, onOpenChange }: { ad: AdDTO | null; onOpenChang
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Analytics: {ad.title}</DialogTitle>
+          <DialogDescription>Performance metrics for this advertisement campaign.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
