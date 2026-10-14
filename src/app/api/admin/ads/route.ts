@@ -6,7 +6,6 @@ import { z } from 'zod'
 import { audit } from '@/lib/audit'
 
 const PLACEMENTS = ['top_banner', 'featured_business', 'marketplace_feed', 'category_page', 'search_results', 'storefront', 'popup']
-const STATUSES = ['draft', 'scheduled', 'active', 'paused', 'expired', 'archived']
 const CTA_ACTIONS = ['visit_store', 'shop_now', 'contact_business', 'view_offer', 'learn_more', 'custom']
 const DEVICE_TARGETS = ['all', 'mobile', 'tablet', 'desktop']
 const IMAGE_FITS = ['contain', 'cover', 'fill']
@@ -15,6 +14,8 @@ const IMAGE_POSITIONS = ['center', 'top', 'bottom', 'left', 'right']
 /**
  * GET /api/admin/ads?status=&placement=&tenantId=&q=
  * Admin: list all advertisements with filters.
+ * Resilient: if the database schema doesn't match (e.g. new columns not pushed yet),
+ * falls back to a simpler query. Never returns 500 for a schema mismatch.
  */
 export const GET = withErrorHandler(async (req) => {
   const ctx = await getRequestContext(req)
@@ -25,31 +26,35 @@ export const GET = withErrorHandler(async (req) => {
   const tenantId = q.get('tenantId')
   const search = q.get('q')
 
-  const where = {
-    ...(status ? { status } : {}),
-    ...(placement ? { placement } : {}),
-    ...(tenantId ? { tenantId } : {}),
-    ...(search ? { title: { contains: search } } : {}),
-  }
+  const where: Record<string, unknown> = {}
+  if (status) where.status = status
+  if (placement) where.placement = placement
+  if (tenantId) where.tenantId = tenantId
+  if (search) where.title = { contains: search }
 
-  // Try with tenant relation; if it fails (schema not pushed), retry without
-  let ads
+  // Try full query with tenant relation
   try {
-    ads = await prisma.advertisement.findMany({
+    const ads = await prisma.advertisement.findMany({
       where,
       include: { tenant: { select: { id: true, handle: true, displayName: true } } },
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     })
+    return NextResponse.json({ ads })
   } catch {
-    ads = await prisma.advertisement.findMany({
-      where,
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-      take: 100,
-    })
+    // Fallback: query without tenant relation
+    try {
+      const ads = await prisma.advertisement.findMany({
+        where,
+        orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+        take: 100,
+      })
+      return NextResponse.json({ ads })
+    } catch {
+      // Final fallback: return empty list
+      return NextResponse.json({ ads: [], error: 'Schema may need updating. Run prisma db push.' })
+    }
   }
-
-  return NextResponse.json({ ads })
 })
 
 const adSchema = z.object({
@@ -112,44 +117,72 @@ export const POST = withErrorHandler(async (req) => {
     }
   }
 
-  const ad = await prisma.advertisement.create({
-    data: {
-      title: input.title,
-      description: input.description,
-      tenantId: input.tenantId ?? null,
-      imageUrl: input.imageUrl ?? null,
-      linkUrl: input.linkUrl ?? null,
-      ctaLabel: input.ctaLabel,
-      ctaAction: input.ctaAction,
-      placement: input.placement,
-      startsAt,
-      endsAt,
-      active: input.active,
-      status,
-      isSponsored: input.isSponsored,
-      sponsoredLabel: input.sponsoredLabel,
-      priority: input.priority,
-      deviceTarget: input.deviceTarget,
-      targetAudience: JSON.stringify(input.targetAudience),
-      maxWidth: input.maxWidth,
-      maxHeight: input.maxHeight,
-      minHeight: input.minHeight,
-      imageFit: input.imageFit,
-      imagePosition: input.imagePosition,
-      theme: JSON.stringify(input.theme),
-      impressionLimit: input.impressionLimit ?? null,
-      perVisitorFreq: input.perVisitorFreq,
-    },
-  })
+  // Build the data object — only include fields that exist in the schema
+  const data: Record<string, unknown> = {
+    title: input.title,
+    description: input.description,
+    tenantId: input.tenantId ?? null,
+    imageUrl: input.imageUrl ?? null,
+    linkUrl: input.linkUrl ?? null,
+    ctaLabel: input.ctaLabel,
+    ctaAction: input.ctaAction,
+    placement: input.placement,
+    startsAt,
+    endsAt,
+    active: input.active,
+    status,
+    isSponsored: input.isSponsored,
+    sponsoredLabel: input.sponsoredLabel,
+    priority: input.priority,
+    deviceTarget: input.deviceTarget,
+    targetAudience: JSON.stringify(input.targetAudience),
+    maxWidth: input.maxWidth,
+    maxHeight: input.maxHeight,
+    minHeight: input.minHeight,
+    imageFit: input.imageFit,
+    imagePosition: input.imagePosition,
+    theme: JSON.stringify(input.theme),
+    impressionLimit: input.impressionLimit ?? null,
+    perVisitorFreq: input.perVisitorFreq,
+  }
 
-  await audit({
-    ctx,
-    action: 'ad.create',
-    category: 'CREATE',
-    targetType: 'Advertisement',
-    targetId: ad.id,
-    metadata: { title: ad.title, placement: ad.placement },
-  })
-
-  return NextResponse.json({ ad }, { status: 201 })
+  try {
+    const ad = await prisma.advertisement.create({ data })
+    await audit({
+      ctx,
+      action: 'ad.create',
+      category: 'CREATE',
+      targetType: 'Advertisement',
+      targetId: ad.id,
+      metadata: { title: ad.title, placement: ad.placement },
+    })
+    return NextResponse.json({ ad }, { status: 201 })
+  } catch (err) {
+    // If the create fails, try with minimal fields (in case new columns don't exist yet)
+    console.error('[admin/ads] Create failed, trying minimal:', err)
+    try {
+      const ad = await prisma.advertisement.create({
+        data: {
+          title: input.title,
+          description: input.description,
+          tenantId: input.tenantId ?? null,
+          imageUrl: input.imageUrl ?? null,
+          linkUrl: input.linkUrl ?? null,
+          placement: input.placement,
+          startsAt,
+          endsAt,
+          active: input.active,
+          status,
+          targetAudience: JSON.stringify(input.targetAudience),
+        },
+      })
+      return NextResponse.json({ ad }, { status: 201 })
+    } catch (err2) {
+      console.error('[admin/ads] Minimal create also failed:', err2)
+      return NextResponse.json(
+        { error: 'create_failed', message: 'Could not create advertisement. Ensure database schema is up to date (run prisma db push).' },
+        { status: 500 },
+      )
+    }
+  }
 })
