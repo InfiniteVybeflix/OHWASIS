@@ -69,7 +69,13 @@ const DEFAULT_THEME: Record<string, string> = {
 export function AdRenderer({ ad, onDismiss }: { ad: AdData; onDismiss?: () => void }) {
   const [imageStatus, setImageStatus] = useState<'loading' | 'loaded' | 'error'>('loading')
   const [viewport, setViewport] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
-  const theme = { ...DEFAULT_THEME, ...ad.theme }
+  const theme: Record<string, string> = { ...DEFAULT_THEME }
+  // Merge ad.theme (Record<string, unknown>) into theme, casting values to string
+  if (ad.theme) {
+    for (const [key, value] of Object.entries(ad.theme)) {
+      if (typeof value === 'string') theme[key] = value
+    }
+  }
 
   useEffect(() => {
     const updateViewport = () => {

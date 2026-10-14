@@ -121,7 +121,7 @@ export function AdsPanel() {
         apiFetch<{ tenants: TenantDTO[] }>('/api/admin/merchants'),
       ])
       setAds(adData.ads)
-      setTenants(tenantData.tenants?.map((t: TenantDTO & Record<string, unknown>) => ({ id: t.id, handle: t.handle, displayName: t.displayName })) ?? [])
+      setTenants((tenantData.tenants ?? []).map((t: { id: string; handle: string; displayName: string }) => ({ id: t.id, handle: t.handle, displayName: t.displayName })))
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 
