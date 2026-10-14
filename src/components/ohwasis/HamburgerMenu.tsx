@@ -106,7 +106,7 @@ export function HamburgerMenu() {
   ]
 
   const footerLinks: Array<{ label: string; icon: typeof Info; href: string; external?: boolean }> = [
-    { label: 'About', icon: Info, href: '/#about' },
+    { label: 'About', icon: Info, href: '/about' },
     { label: 'Terms', icon: FileText, href: '/terms' },
     { label: 'Privacy', icon: Shield, href: '/privacy' },
   ]

@@ -2,16 +2,17 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getRequestContext, requireUser } from '@/lib/session'
 import { withErrorHandler } from '@/lib/api'
-import { writeFileSync, mkdirSync, existsSync } from 'fs'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
 import { audit } from '@/lib/audit'
 
 /**
  * POST /api/customer/avatar
  *
  * Upload a profile avatar image. Accepts multipart form data with a "file" field.
- * Saves to /public/uploads/ and updates the user's avatarUrl.
+ * Converts the image to a base64 data URL and stores it directly in the database
+ * (User.avatarUrl). This approach works on Vercel serverless (read-only filesystem)
+ * without needing external storage like S3/Supabase Storage.
+ *
+ * Limitation: avatars are limited to 200KB to keep the database lean.
  */
 export const POST = withErrorHandler(async (req) => {
   const ctx = await getRequestContext(req)
@@ -20,29 +21,24 @@ export const POST = withErrorHandler(async (req) => {
   const formData = await req.formData()
   const file = formData.get('file')
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: 'no_file' }, { status: 400 })
+    return NextResponse.json({ error: 'no_file', message: 'No file provided.' }, { status: 400 })
   }
 
   const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
   if (!allowedTypes.includes(file.type)) {
     return NextResponse.json({ error: 'invalid_type', message: 'Only JPEG, PNG, WebP, and GIF images are allowed.' }, { status: 400 })
   }
-  if (file.size > 5 * 1024 * 1024) {
-    return NextResponse.json({ error: 'too_large', message: 'Image must be under 5MB.' }, { status: 400 })
+  // 200KB max — stored as base64 in the DB
+  if (file.size > 200 * 1024) {
+    return NextResponse.json({ error: 'too_large', message: 'Image must be under 200KB. Please compress it first.' }, { status: 400 })
   }
 
-  const uploadsDir = join(process.cwd(), 'public', 'uploads')
-  if (!existsSync(uploadsDir)) {
-    mkdirSync(uploadsDir, { recursive: true })
-  }
-
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-  const filename = `avatar-${user.id}-${randomUUID()}.${ext}`
-  const filepath = join(uploadsDir, filename)
+  // Convert to base64 data URL
   const buffer = Buffer.from(await file.arrayBuffer())
-  writeFileSync(filepath, buffer)
+  const base64 = buffer.toString('base64')
+  const mimeType = file.type
+  const avatarUrl = `data:${mimeType};base64,${base64}`
 
-  const avatarUrl = `/uploads/${filename}`
   await prisma.user.update({
     where: { id: user.id },
     data: { avatarUrl },

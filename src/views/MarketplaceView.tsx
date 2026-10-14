@@ -52,6 +52,16 @@ interface PromotionDTO {
   }
 }
 
+interface AdDTO {
+  id: string
+  title: string
+  description: string | null
+  imageUrl: string | null
+  linkUrl: string | null
+  placement: string
+  targetAudience: string[]
+}
+
 interface ProductImage {
   url: string
   altText?: string | null
@@ -106,6 +116,7 @@ export function MarketplaceView() {
 
   const [tenants, setTenants] = useState<MarketTenant[]>([])
   const [promotions, setPromotions] = useState<PromotionDTO[]>([])
+  const [ads, setAds] = useState<AdDTO[]>([])
   const [trending, setTrending] = useState<ProductDTO[]>([])
   const [newArrivals, setNewArrivals] = useState<ProductDTO[]>([])
   const [storeReviews, setStoreReviews] = useState<Record<string, ReviewSummary>>({})
@@ -116,20 +127,26 @@ export function MarketplaceView() {
   const [industryFilter, setIndustryFilter] = useState<string>('all')
   const promoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Initial load — tenants, promotions, and product feed across stores
+  // Initial load — tenants, promotions, ads, and product feed across stores
   useEffect(() => {
     void (async () => {
       setLoading(true)
       try {
-        const [tenantData, promoData] = await Promise.all([
+        const [tenantData, promoData, adData] = await Promise.all([
           apiFetch<{ tenants: MarketTenant[] }>('/api/tenants/list', { tenantHandle: null }),
           apiFetch<{ promotions: PromotionDTO[] }>(
             '/api/promotions?placement=marketplace_top',
             { tenantHandle: null },
           ).catch(() => ({ promotions: [] as PromotionDTO[] })),
+          // Also fetch admin-managed ads (top_banner placement)
+          apiFetch<{ ads: AdDTO[] }>(
+            '/api/ads?placement=top_banner',
+            { tenantHandle: null },
+          ).catch(() => ({ ads: [] as AdDTO[] })),
         ])
         setTenants(tenantData.tenants ?? [])
         setPromotions(promoData.promotions ?? [])
+        setAds(adData.ads ?? [])
 
         // Fetch trending products across first N tenants (limit to keep API responsive)
         const top = (tenantData.tenants ?? []).slice(0, 12)
@@ -248,6 +265,32 @@ export function MarketplaceView() {
           </div>
         </div>
       </header>
+
+      {/* Admin-managed advertisement banner (only shows if admin enabled ads) */}
+      {ads.length > 0 && (
+        <section className="container mx-auto max-w-7xl px-4 pt-2">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {ads.map((ad) => (
+              <a
+                key={ad.id}
+                href={ad.linkUrl || '#'}
+                target={ad.linkUrl ? '_blank' : undefined}
+                rel={ad.linkUrl ? 'noopener noreferrer' : undefined}
+                className="flex shrink-0 items-center gap-3 rounded-lg border border-amber-500/30 bg-gradient-to-r from-amber-50 to-amber-50/50 p-3 dark:from-amber-950/20 dark:to-transparent"
+                style={{ minWidth: '300px' }}
+              >
+                {ad.imageUrl && (
+                  <img src={ad.imageUrl} alt={ad.title} className="h-12 w-12 rounded-lg object-cover" />
+                )}
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-amber-900 dark:text-amber-100">{ad.title}</div>
+                  {ad.description && <div className="text-xs text-amber-700 dark:text-amber-300">{ad.description}</div>}
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Promotional banner carousel */}
       <section
