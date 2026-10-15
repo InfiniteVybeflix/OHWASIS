@@ -139,21 +139,26 @@ export function AdsPanel() {
 
   const duplicate = async (ad: AdDTO) => {
     try {
+      // Parse targetAudience in case it's a JSON string from the API
+      let targetAudience = ad.targetAudience
+      if (typeof targetAudience === 'string') {
+        try { targetAudience = JSON.parse(targetAudience) } catch { targetAudience = ['customer'] }
+      }
       await apiFetch('/api/admin/ads', {
         method: 'POST',
         body: JSON.stringify({
           title: `${ad.title} (Copy)`,
           description: ad.description,
-          tenantId: ad.tenantId,
-          imageUrl: ad.imageUrl,
-          linkUrl: ad.linkUrl,
+          tenantId: ad.tenantId || undefined,
+          imageUrl: ad.imageUrl || undefined,
+          linkUrl: ad.linkUrl || undefined,
           ctaLabel: ad.ctaLabel,
           ctaAction: ad.ctaAction,
           placement: ad.placement,
           active: false,
           priority: ad.priority,
           deviceTarget: ad.deviceTarget,
-          targetAudience: ad.targetAudience,
+          targetAudience: Array.isArray(targetAudience) ? targetAudience : ['customer'],
           maxWidth: ad.maxWidth,
           maxHeight: ad.maxHeight,
           minHeight: ad.minHeight,
@@ -170,12 +175,19 @@ export function AdsPanel() {
   }
 
   const archive = async (ad: AdDTO) => {
-    if (!confirm(`Archive "${ad.title}"? It will no longer appear publicly.`)) return
+    // Toggle: if archived → unarchive (back to draft), if not archived → archive
+    const isArchived = ad.status === 'archived'
+    if (!confirm(isArchived ? `Restore "${ad.title}" from archive?` : `Archive "${ad.title}"? It will no longer appear publicly.`)) return
     try {
-      await apiFetch(`/api/admin/ads/${ad.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'archived', active: false }) })
-      pushToast({ type: 'success', message: 'Ad archived' })
+      if (isArchived) {
+        await apiFetch(`/api/admin/ads/${ad.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'draft', active: false }) })
+        pushToast({ type: 'success', message: 'Ad restored from archive' })
+      } else {
+        await apiFetch(`/api/admin/ads/${ad.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'archived', active: false }) })
+        pushToast({ type: 'success', message: 'Ad archived' })
+      }
       void load()
-    } catch { pushToast({ type: 'error', message: 'Archive failed' }) }
+    } catch { pushToast({ type: 'error', message: 'Operation failed' }) }
   }
 
   const remove = async (ad: AdDTO) => {
@@ -274,8 +286,8 @@ export function AdsPanel() {
                       <Button size="sm" variant="ghost" onClick={() => void duplicate(ad)} title="Duplicate">
                         <Copy className="h-3 w-3" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => void archive(ad)} title="Archive">
-                        <Archive className="h-3 w-3" />
+                      <Button size="sm" variant="ghost" onClick={() => void archive(ad)} title={ad.status === 'archived' ? 'Restore from archive' : 'Archive'}>
+                        {ad.status === 'archived' ? <RotateCcw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => void remove(ad)} title="Delete" className="text-rose-500">
                         <Trash2 className="h-3 w-3" />
@@ -431,7 +443,7 @@ function AdEditorDialog({
         sponsoredLabel: form.sponsoredLabel,
         priority: form.priority,
         deviceTarget: form.deviceTarget,
-        targetAudience: form.targetAudience,
+        targetAudience: Array.isArray(form.targetAudience) ? form.targetAudience : (typeof form.targetAudience === 'string' ? (() => { try { return JSON.parse(form.targetAudience) } catch { return ['customer'] } })() : ['customer']),
         maxWidth: form.maxWidth,
         maxHeight: form.maxHeight,
         minHeight: form.minHeight,

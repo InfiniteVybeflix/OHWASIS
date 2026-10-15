@@ -7,7 +7,6 @@ import { audit } from '@/lib/audit'
 
 interface RouteParams { params: Promise<{ id: string }> }
 
-// Shared constants — used for validation, not enforcement
 const VALID_PLACEMENTS = ['top_banner', 'featured_business', 'marketplace_feed', 'category_page', 'search_results', 'storefront', 'popup']
 const VALID_STATUSES = ['draft', 'scheduled', 'active', 'paused', 'expired', 'archived']
 const VALID_CTA_ACTIONS = ['visit_store', 'shop_now', 'contact_business', 'view_offer', 'learn_more', 'custom']
@@ -15,15 +14,15 @@ const VALID_DEVICE_TARGETS = ['all', 'mobile', 'tablet', 'desktop']
 const VALID_IMAGE_FITS = ['contain', 'cover', 'fill']
 const VALID_IMAGE_POSITIONS = ['center', 'top', 'bottom', 'left', 'right']
 
-// Helper: validate a string is a safe URL (https/http) or empty/null/undefined
+// Accept URL, empty string, null, or undefined
 const optionalUrl = z.union([
-  z.string().url().refine(url => url.startsWith('http://') || url.startsWith('https://'), 'URL must use http or https protocol'),
+  z.string().url().refine(url => url.startsWith('http://') || url.startsWith('https://'), 'URL must use http or https'),
   z.literal(''),
   z.null(),
   z.undefined(),
 ])
 
-// Helper: validate a datetime string or empty/null/undefined
+// Accept datetime, empty, null, or undefined
 const optionalDatetime = z.union([
   z.string().datetime(),
   z.literal(''),
@@ -31,7 +30,7 @@ const optionalDatetime = z.union([
   z.undefined(),
 ])
 
-// Helper: validate against allowed values, or empty/null/undefined (for optional fields)
+// Accept enum value, empty, null, or undefined
 const optionalEnum = (allowed: string[]) => z.union([
   z.enum(allowed as [string, ...string[]]),
   z.literal(''),
@@ -39,19 +38,28 @@ const optionalEnum = (allowed: string[]) => z.union([
   z.undefined(),
 ])
 
-// Helper: validate tenantId — accepts cuid (existing business), null (no business), or undefined (not sent)
-// Also accepts any non-empty string for external advertisers (schools, etc.) that aren't in our system
-const optionalTenantId = z.union([
-  z.string().cuid(),
+// Accept array of strings, OR a JSON string that can be parsed to an array, OR empty/null/undefined
+const flexibleStringArray = z.union([
+  z.array(z.string()),
+  z.string().transform(s => { try { return JSON.parse(s) } catch { return ['customer'] } }),
   z.null(),
   z.undefined(),
-  z.string().min(1).max(100).refine(s => s !== 'none', 'Use null for no business').optional(),
+])
+
+// Accept cuid, any string (external advertiser), null, undefined, empty, "none"
+const flexibleTenantId = z.union([
+  z.string().cuid(),
+  z.string().min(1).max(100),
+  z.literal(''),
+  z.literal('none'),
+  z.null(),
+  z.undefined(),
 ])
 
 const patchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().min(1).max(1000).optional(),
-  tenantId: optionalTenantId.optional(),
+  tenantId: flexibleTenantId.optional(),
   imageUrl: optionalUrl.optional(),
   linkUrl: optionalUrl.optional(),
   ctaLabel: z.string().max(50).optional(),
@@ -65,7 +73,7 @@ const patchSchema = z.object({
   sponsoredLabel: z.string().max(50).optional(),
   priority: z.number().int().min(0).max(1000).optional(),
   deviceTarget: optionalEnum(VALID_DEVICE_TARGETS).optional(),
-  targetAudience: z.array(z.string()).optional(),
+  targetAudience: flexibleStringArray.optional(),
   maxWidth: z.number().int().min(200).max(3840).optional(),
   maxHeight: z.number().int().min(40).max(600).optional(),
   minHeight: z.number().int().min(40).max(600).optional(),
@@ -76,10 +84,6 @@ const patchSchema = z.object({
   perVisitorFreq: z.number().int().min(0).max(100).optional(),
 })
 
-/**
- * PATCH /api/admin/ads/[id]
- * Update an advertisement.
- */
 export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
   const ctx = await getRequestContext(req)
   requirePlatformOperator(ctx)
@@ -89,30 +93,25 @@ export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
   const existing = await prisma.advertisement.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
-  // Handle status transitions
+  // Handle status transitions — including unarchive
   let newStatus: string | undefined
   if (input.status && input.status !== '') {
     newStatus = input.status
   } else if (input.active !== undefined) {
     if (input.active) {
-      newStatus = existing.startsAt > new Date() ? 'scheduled' : 'active'
+      // Resuming: if currently archived, move to draft; if paused, move to active
+      newStatus = existing.status === 'archived' ? 'draft' : (existing.startsAt > new Date() ? 'scheduled' : 'active')
     } else {
-      newStatus = 'paused'
+      newStatus = existing.status === 'archived' ? 'archived' : 'paused'
     }
   }
 
-  // Build update data — only include fields that were actually sent
   const data: Record<string, unknown> = {}
 
   if (input.title) data.title = input.title
   if (input.description) data.description = input.description
   if (input.tenantId !== undefined) {
-    // Convert '' and 'none' to null; keep real tenantIds
-    if (input.tenantId === '' || input.tenantId === 'none' || input.tenantId === null) {
-      data.tenantId = null
-    } else {
-      data.tenantId = input.tenantId
-    }
+    data.tenantId = (input.tenantId === '' || input.tenantId === 'none' || input.tenantId === null) ? null : input.tenantId
   }
   if (input.imageUrl !== undefined) {
     data.imageUrl = (input.imageUrl === '' || input.imageUrl === null) ? null : input.imageUrl
@@ -133,7 +132,11 @@ export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
   if (input.sponsoredLabel) data.sponsoredLabel = input.sponsoredLabel
   if (input.priority !== undefined) data.priority = input.priority
   if (input.deviceTarget && input.deviceTarget !== '') data.deviceTarget = input.deviceTarget
-  if (input.targetAudience) data.targetAudience = JSON.stringify(input.targetAudience)
+  // targetAudience: ensure it's always stored as a JSON string
+  if (input.targetAudience !== undefined) {
+    const arr = Array.isArray(input.targetAudience) ? input.targetAudience : ['customer']
+    data.targetAudience = JSON.stringify(arr)
+  }
   if (input.maxWidth !== undefined) data.maxWidth = input.maxWidth
   if (input.maxHeight !== undefined) data.maxHeight = input.maxHeight
   if (input.minHeight !== undefined) data.minHeight = input.minHeight
@@ -157,20 +160,11 @@ export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
   return NextResponse.json({ ad })
 })
 
-/**
- * DELETE /api/admin/ads/[id]
- */
 export const DELETE = withErrorHandler(async (req, { params }: RouteParams) => {
   const ctx = await getRequestContext(req)
   requirePlatformOperator(ctx)
   const { id } = await params
   await prisma.advertisement.delete({ where: { id } })
-  await audit({
-    ctx,
-    action: 'ad.delete',
-    category: 'DELETE',
-    targetType: 'Advertisement',
-    targetId: id,
-  })
+  await audit({ ctx, action: 'ad.delete', category: 'DELETE', targetType: 'Advertisement', targetId: id })
   return NextResponse.json({ ok: true })
 })

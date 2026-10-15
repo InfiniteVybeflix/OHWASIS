@@ -219,8 +219,10 @@ function AdContent({
     <div
       className={cn(
         'flex',
-        layout === 'banner' ? 'flex-row items-center' : 'flex-col',
-        'gap-3 p-4',
+        layout === 'banner'
+          ? 'flex-row items-start sm:items-center flex-wrap sm:flex-nowrap gap-2 sm:gap-3'
+          : 'flex-col',
+        'p-3 sm:p-4',
       )}
       style={{ padding: theme.padding + 'px' }}
     >
@@ -229,14 +231,13 @@ function AdContent({
         <div
           className={cn(
             'relative shrink-0 overflow-hidden',
-            layout === 'banner' ? 'h-full min-h-[60px] w-24 sm:w-32' : 'aspect-video w-full',
+            layout === 'banner' ? 'h-12 w-12 sm:h-16 sm:w-16' : 'aspect-video w-full',
           )}
           style={{ borderRadius: '8px' }}
         >
           {imageStatus === 'loading' && (
             <div className="absolute inset-0 animate-pulse bg-muted/30" />
           )}
-          { }
           <img
             src={ad.imageUrl!}
             alt={ad.title}
@@ -252,15 +253,15 @@ function AdContent({
       {/* Fallback gradient block when image fails or is missing */}
       {!showImage && layout === 'banner' && (
         <div
-          className="flex h-full min-h-[60px] w-16 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg sm:h-16 sm:w-16"
           style={{ background: 'linear-gradient(135deg, #D4AF3733, #a855f722)' }}
         >
-          <span className="text-xs font-bold text-muted-foreground">AD</span>
+          <span className="text-[10px] font-bold text-muted-foreground">AD</span>
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+      {/* Content — flex-1 so it takes available space, min-w-0 to allow truncation */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         {ad.isSponsored && (
           <span
             className="inline-block w-fit rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
@@ -270,13 +271,13 @@ function AdContent({
           </span>
         )}
         <h3
-          className="line-clamp-1 text-sm font-semibold sm:text-base"
+          className="line-clamp-2 text-xs font-semibold sm:text-sm"
           style={{ color: theme.titleColor }}
         >
           {ad.title}
         </h3>
         <p
-          className={cn('text-xs leading-snug', layout === 'banner' ? 'line-clamp-1 sm:line-clamp-2' : 'line-clamp-2')}
+          className="line-clamp-2 text-xs leading-snug"
           style={{ color: theme.descriptionColor }}
         >
           {ad.description}
@@ -286,12 +287,12 @@ function AdContent({
         )}
       </div>
 
-      {/* CTA button */}
+      {/* CTA button — shrink-0 so it never gets squeezed out */}
       <button
         onClick={handleClick}
         className={cn(
-          'shrink-0 text-xs font-semibold transition-opacity hover:opacity-90',
-          layout === 'banner' ? 'px-3 py-2' : 'px-4 py-2',
+          'shrink-0 self-start text-xs font-semibold transition-opacity hover:opacity-90 sm:self-center',
+          layout === 'banner' ? 'px-3 py-1.5' : 'px-4 py-2',
         )}
         style={{
           backgroundColor: theme.ctaBg,

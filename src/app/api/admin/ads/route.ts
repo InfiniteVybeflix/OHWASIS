@@ -36,12 +36,22 @@ const optionalEnum = (allowed: string[]) => z.union([
   z.undefined(),
 ])
 
-// Helper: tenantId — accepts cuid (existing business), null (no business/external), or undefined
-const optionalTenantId = z.union([
+// Accept cuid, any string (external advertiser), null, undefined, empty, "none"
+const flexibleTenantId = z.union([
   z.string().cuid(),
+  z.string().min(1).max(100),
+  z.literal(''),
+  z.literal('none'),
   z.null(),
   z.undefined(),
-  z.string().min(1).max(100).refine(s => s !== 'none', 'Use null for no business'),
+])
+
+// Accept array of strings, OR a JSON string that can be parsed to an array, OR empty/null/undefined
+const flexibleStringArray = z.union([
+  z.array(z.string()),
+  z.string().transform(s => { try { return JSON.parse(s) } catch { return ['customer'] } }),
+  z.null(),
+  z.undefined(),
 ])
 
 /**
@@ -83,7 +93,7 @@ export const GET = withErrorHandler(async (req) => {
 const adSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200),
   description: z.string().min(1, 'Description is required').max(1000),
-  tenantId: optionalTenantId.optional(),
+  tenantId: flexibleTenantId.optional(),
   imageUrl: optionalUrl.optional(),
   linkUrl: optionalUrl.optional(),
   ctaLabel: z.string().max(50).default('Learn More'),
@@ -96,7 +106,7 @@ const adSchema = z.object({
   sponsoredLabel: z.string().max(50).default('Sponsored'),
   priority: z.number().int().min(0).max(1000).default(0),
   deviceTarget: optionalEnum(VALID_DEVICE_TARGETS).default('all'),
-  targetAudience: z.array(z.string()).default(['customer']),
+  targetAudience: flexibleStringArray.default(['customer']),
   maxWidth: z.number().int().min(200).max(3840).default(1280),
   maxHeight: z.number().int().min(40).max(600).default(200),
   minHeight: z.number().int().min(40).max(600).default(80),
