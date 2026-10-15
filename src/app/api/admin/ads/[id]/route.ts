@@ -7,35 +7,70 @@ import { audit } from '@/lib/audit'
 
 interface RouteParams { params: Promise<{ id: string }> }
 
-const CTA_ACTIONS = ['visit_store', 'shop_now', 'contact_business', 'view_offer', 'learn_more', 'custom']
-const PLACEMENTS = ['top_banner', 'featured_business', 'marketplace_feed', 'category_page', 'search_results', 'storefront', 'popup']
-const DEVICE_TARGETS = ['all', 'mobile', 'tablet', 'desktop']
-const IMAGE_FITS = ['contain', 'cover', 'fill']
-const IMAGE_POSITIONS = ['center', 'top', 'bottom', 'left', 'right']
+// Shared constants — used for validation, not enforcement
+const VALID_PLACEMENTS = ['top_banner', 'featured_business', 'marketplace_feed', 'category_page', 'search_results', 'storefront', 'popup']
+const VALID_STATUSES = ['draft', 'scheduled', 'active', 'paused', 'expired', 'archived']
+const VALID_CTA_ACTIONS = ['visit_store', 'shop_now', 'contact_business', 'view_offer', 'learn_more', 'custom']
+const VALID_DEVICE_TARGETS = ['all', 'mobile', 'tablet', 'desktop']
+const VALID_IMAGE_FITS = ['contain', 'cover', 'fill']
+const VALID_IMAGE_POSITIONS = ['center', 'top', 'bottom', 'left', 'right']
+
+// Helper: validate a string is a safe URL (https/http) or empty/null/undefined
+const optionalUrl = z.union([
+  z.string().url().refine(url => url.startsWith('http://') || url.startsWith('https://'), 'URL must use http or https protocol'),
+  z.literal(''),
+  z.null(),
+  z.undefined(),
+])
+
+// Helper: validate a datetime string or empty/null/undefined
+const optionalDatetime = z.union([
+  z.string().datetime(),
+  z.literal(''),
+  z.null(),
+  z.undefined(),
+])
+
+// Helper: validate against allowed values, or empty/null/undefined (for optional fields)
+const optionalEnum = (allowed: string[]) => z.union([
+  z.enum(allowed as [string, ...string[]]),
+  z.literal(''),
+  z.null(),
+  z.undefined(),
+])
+
+// Helper: validate tenantId — accepts cuid (existing business), null (no business), or undefined (not sent)
+// Also accepts any non-empty string for external advertisers (schools, etc.) that aren't in our system
+const optionalTenantId = z.union([
+  z.string().cuid(),
+  z.null(),
+  z.undefined(),
+  z.string().min(1).max(100).refine(s => s !== 'none', 'Use null for no business').optional(),
+])
 
 const patchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().min(1).max(1000).optional(),
-  tenantId: z.string().cuid().optional().nullable(),
-  imageUrl: z.string().url().optional().nullable(),
-  linkUrl: z.string().url().optional().nullable(),
+  tenantId: optionalTenantId.optional(),
+  imageUrl: optionalUrl.optional(),
+  linkUrl: optionalUrl.optional(),
   ctaLabel: z.string().max(50).optional(),
-  ctaAction: z.enum(CTA_ACTIONS as [string, ...string[]]).optional(),
-  placement: z.enum(PLACEMENTS as [string, ...string[]]).optional(),
-  startsAt: z.string().datetime().optional(),
-  endsAt: z.string().datetime().optional().nullable(),
+  ctaAction: optionalEnum(VALID_CTA_ACTIONS).optional(),
+  placement: optionalEnum(VALID_PLACEMENTS).optional(),
+  startsAt: optionalDatetime.optional(),
+  endsAt: optionalDatetime.optional(),
   active: z.boolean().optional(),
-  status: z.enum(['draft', 'scheduled', 'active', 'paused', 'expired', 'archived']).optional(),
+  status: optionalEnum(VALID_STATUSES).optional(),
   isSponsored: z.boolean().optional(),
   sponsoredLabel: z.string().max(50).optional(),
   priority: z.number().int().min(0).max(1000).optional(),
-  deviceTarget: z.enum(DEVICE_TARGETS as [string, ...string[]]).optional(),
+  deviceTarget: optionalEnum(VALID_DEVICE_TARGETS).optional(),
   targetAudience: z.array(z.string()).optional(),
   maxWidth: z.number().int().min(200).max(3840).optional(),
   maxHeight: z.number().int().min(40).max(600).optional(),
   minHeight: z.number().int().min(40).max(600).optional(),
-  imageFit: z.enum(IMAGE_FITS as [string, ...string[]]).optional(),
-  imagePosition: z.enum(IMAGE_POSITIONS as [string, ...string[]]).optional(),
+  imageFit: optionalEnum(VALID_IMAGE_FITS).optional(),
+  imagePosition: optionalEnum(VALID_IMAGE_POSITIONS).optional(),
   theme: z.record(z.string(), z.unknown()).optional(),
   impressionLimit: z.number().int().min(1).optional().nullable(),
   perVisitorFreq: z.number().int().min(0).max(100).optional(),
@@ -43,7 +78,7 @@ const patchSchema = z.object({
 
 /**
  * PATCH /api/admin/ads/[id]
- * Update an advertisement. Supports all fields.
+ * Update an advertisement.
  */
 export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
   const ctx = await getRequestContext(req)
@@ -55,8 +90,10 @@ export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
   if (!existing) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
   // Handle status transitions
-  let newStatus = input.status
-  if (input.active !== undefined && !input.status) {
+  let newStatus: string | undefined
+  if (input.status && input.status !== '') {
+    newStatus = input.status
+  } else if (input.active !== undefined) {
     if (input.active) {
       newStatus = existing.startsAt > new Date() ? 'scheduled' : 'active'
     } else {
@@ -64,36 +101,49 @@ export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
     }
   }
 
-  const ad = await prisma.advertisement.update({
-    where: { id },
-    data: {
-      ...(input.title && { title: input.title }),
-      ...(input.description && { description: input.description }),
-      ...(input.tenantId !== undefined && { tenantId: input.tenantId }),
-      ...(input.imageUrl !== undefined && { imageUrl: input.imageUrl }),
-      ...(input.linkUrl !== undefined && { linkUrl: input.linkUrl }),
-      ...(input.ctaLabel && { ctaLabel: input.ctaLabel }),
-      ...(input.ctaAction && { ctaAction: input.ctaAction }),
-      ...(input.placement && { placement: input.placement }),
-      ...(input.startsAt && { startsAt: new Date(input.startsAt) }),
-      ...(input.endsAt !== undefined && { endsAt: input.endsAt ? new Date(input.endsAt) : null }),
-      ...(input.active !== undefined && { active: input.active }),
-      ...(newStatus && { status: newStatus }),
-      ...(input.isSponsored !== undefined && { isSponsored: input.isSponsored }),
-      ...(input.sponsoredLabel && { sponsoredLabel: input.sponsoredLabel }),
-      ...(input.priority !== undefined && { priority: input.priority }),
-      ...(input.deviceTarget && { deviceTarget: input.deviceTarget }),
-      ...(input.targetAudience && { targetAudience: JSON.stringify(input.targetAudience) }),
-      ...(input.maxWidth && { maxWidth: input.maxWidth }),
-      ...(input.maxHeight && { maxHeight: input.maxHeight }),
-      ...(input.minHeight && { minHeight: input.minHeight }),
-      ...(input.imageFit && { imageFit: input.imageFit }),
-      ...(input.imagePosition && { imagePosition: input.imagePosition }),
-      ...(input.theme && { theme: JSON.stringify(input.theme) }),
-      ...(input.impressionLimit !== undefined && { impressionLimit: input.impressionLimit }),
-      ...(input.perVisitorFreq !== undefined && { perVisitorFreq: input.perVisitorFreq }),
-    },
-  })
+  // Build update data — only include fields that were actually sent
+  const data: Record<string, unknown> = {}
+
+  if (input.title) data.title = input.title
+  if (input.description) data.description = input.description
+  if (input.tenantId !== undefined) {
+    // Convert '' and 'none' to null; keep real tenantIds
+    if (input.tenantId === '' || input.tenantId === 'none' || input.tenantId === null) {
+      data.tenantId = null
+    } else {
+      data.tenantId = input.tenantId
+    }
+  }
+  if (input.imageUrl !== undefined) {
+    data.imageUrl = (input.imageUrl === '' || input.imageUrl === null) ? null : input.imageUrl
+  }
+  if (input.linkUrl !== undefined) {
+    data.linkUrl = (input.linkUrl === '' || input.linkUrl === null) ? null : input.linkUrl
+  }
+  if (input.ctaLabel) data.ctaLabel = input.ctaLabel
+  if (input.ctaAction && input.ctaAction !== '') data.ctaAction = input.ctaAction
+  if (input.placement && input.placement !== '') data.placement = input.placement
+  if (input.startsAt && input.startsAt !== '') data.startsAt = new Date(input.startsAt)
+  if (input.endsAt !== undefined) {
+    data.endsAt = (input.endsAt === '' || input.endsAt === null) ? null : new Date(input.endsAt as string)
+  }
+  if (input.active !== undefined) data.active = input.active
+  if (newStatus) data.status = newStatus
+  if (input.isSponsored !== undefined) data.isSponsored = input.isSponsored
+  if (input.sponsoredLabel) data.sponsoredLabel = input.sponsoredLabel
+  if (input.priority !== undefined) data.priority = input.priority
+  if (input.deviceTarget && input.deviceTarget !== '') data.deviceTarget = input.deviceTarget
+  if (input.targetAudience) data.targetAudience = JSON.stringify(input.targetAudience)
+  if (input.maxWidth !== undefined) data.maxWidth = input.maxWidth
+  if (input.maxHeight !== undefined) data.maxHeight = input.maxHeight
+  if (input.minHeight !== undefined) data.minHeight = input.minHeight
+  if (input.imageFit && input.imageFit !== '') data.imageFit = input.imageFit
+  if (input.imagePosition && input.imagePosition !== '') data.imagePosition = input.imagePosition
+  if (input.theme) data.theme = JSON.stringify(input.theme)
+  if (input.impressionLimit !== undefined) data.impressionLimit = input.impressionLimit
+  if (input.perVisitorFreq !== undefined) data.perVisitorFreq = input.perVisitorFreq
+
+  const ad = await prisma.advertisement.update({ where: { id }, data })
 
   await audit({
     ctx,
@@ -101,7 +151,7 @@ export const PATCH = withErrorHandler(async (req, { params }: RouteParams) => {
     category: 'UPDATE',
     targetType: 'Advertisement',
     targetId: id,
-    metadata: { fields: Object.keys(input), status: ad.status },
+    metadata: { fields: Object.keys(data), status: ad.status },
   })
 
   return NextResponse.json({ ad })

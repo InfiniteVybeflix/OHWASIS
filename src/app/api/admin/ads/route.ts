@@ -5,9 +5,47 @@ import { withErrorHandler, parseBody, queryParams } from '@/lib/api'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
 
+// Shared constants
+const VALID_PLACEMENTS = ['top_banner', 'featured_business', 'marketplace_feed', 'category_page', 'search_results', 'storefront', 'popup']
+const VALID_CTA_ACTIONS = ['visit_store', 'shop_now', 'contact_business', 'view_offer', 'learn_more', 'custom']
+const VALID_DEVICE_TARGETS = ['all', 'mobile', 'tablet', 'desktop']
+const VALID_IMAGE_FITS = ['contain', 'cover', 'fill']
+const VALID_IMAGE_POSITIONS = ['center', 'top', 'bottom', 'left', 'right']
+
+// Helper: validate a string is a safe URL (http/https) or empty/null/undefined
+const optionalUrl = z.union([
+  z.string().url().refine(url => url.startsWith('http://') || url.startsWith('https://'), 'URL must use http or https'),
+  z.literal(''),
+  z.null(),
+  z.undefined(),
+])
+
+// Helper: validate a datetime string or empty/null/undefined
+const optionalDatetime = z.union([
+  z.string().datetime(),
+  z.literal(''),
+  z.null(),
+  z.undefined(),
+])
+
+// Helper: validate against allowed values, or empty/null/undefined
+const optionalEnum = (allowed: string[]) => z.union([
+  z.enum(allowed as [string, ...string[]]),
+  z.literal(''),
+  z.null(),
+  z.undefined(),
+])
+
+// Helper: tenantId — accepts cuid (existing business), null (no business/external), or undefined
+const optionalTenantId = z.union([
+  z.string().cuid(),
+  z.null(),
+  z.undefined(),
+  z.string().min(1).max(100).refine(s => s !== 'none', 'Use null for no business'),
+])
+
 /**
  * GET /api/admin/ads?status=&placement=&tenantId=&q=
- * Admin: list all advertisements with filters.
  */
 export const GET = withErrorHandler(async (req) => {
   const ctx = await getRequestContext(req)
@@ -34,11 +72,7 @@ export const GET = withErrorHandler(async (req) => {
     return NextResponse.json({ ads })
   } catch {
     try {
-      const ads = await prisma.advertisement.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      })
+      const ads = await prisma.advertisement.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 })
       return NextResponse.json({ ads })
     } catch {
       return NextResponse.json({ ads: [] })
@@ -46,29 +80,28 @@ export const GET = withErrorHandler(async (req) => {
   }
 })
 
-// Permissive schema — accept any string, validate critical fields only
 const adSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200),
   description: z.string().min(1, 'Description is required').max(1000),
-  tenantId: z.string().optional().nullable(),
-  imageUrl: z.string().optional().nullable(),
-  linkUrl: z.string().optional().nullable(),
+  tenantId: optionalTenantId.optional(),
+  imageUrl: optionalUrl.optional(),
+  linkUrl: optionalUrl.optional(),
   ctaLabel: z.string().max(50).default('Learn More'),
-  ctaAction: z.string().default('learn_more'),
-  placement: z.string().default('top_banner'),
-  startsAt: z.string().optional(),
-  endsAt: z.string().optional().nullable(),
+  ctaAction: optionalEnum(VALID_CTA_ACTIONS).default('learn_more'),
+  placement: optionalEnum(VALID_PLACEMENTS).default('top_banner'),
+  startsAt: optionalDatetime.optional(),
+  endsAt: optionalDatetime.optional(),
   active: z.boolean().default(false),
   isSponsored: z.boolean().default(true),
   sponsoredLabel: z.string().max(50).default('Sponsored'),
   priority: z.number().int().min(0).max(1000).default(0),
-  deviceTarget: z.string().default('all'),
+  deviceTarget: optionalEnum(VALID_DEVICE_TARGETS).default('all'),
   targetAudience: z.array(z.string()).default(['customer']),
   maxWidth: z.number().int().min(200).max(3840).default(1280),
   maxHeight: z.number().int().min(40).max(600).default(200),
   minHeight: z.number().int().min(40).max(600).default(80),
-  imageFit: z.string().default('cover'),
-  imagePosition: z.string().default('center'),
+  imageFit: optionalEnum(VALID_IMAGE_FITS).default('cover'),
+  imagePosition: optionalEnum(VALID_IMAGE_POSITIONS).default('center'),
   theme: z.record(z.string(), z.unknown()).default({}),
   impressionLimit: z.number().int().min(1).optional().nullable(),
   perVisitorFreq: z.number().int().min(0).max(100).default(0),
@@ -76,16 +109,15 @@ const adSchema = z.object({
 
 /**
  * POST /api/admin/ads
- * Create a new advertisement.
  */
 export const POST = withErrorHandler(async (req) => {
   const ctx = await getRequestContext(req)
   requirePlatformOperator(ctx)
   const input = await parseBody(req, adSchema)
 
-  // Validate schedule
-  const startsAt = input.startsAt ? new Date(input.startsAt) : new Date()
-  const endsAt = input.endsAt ? new Date(input.endsAt) : null
+  // Parse dates
+  const startsAt = input.startsAt && input.startsAt !== '' ? new Date(input.startsAt) : new Date()
+  const endsAt = input.endsAt && input.endsAt !== '' ? new Date(input.endsAt) : null
   if (endsAt && endsAt <= startsAt) {
     return NextResponse.json({ error: 'invalid_schedule', message: 'End date must be after start date.' }, { status: 400 })
   }
@@ -93,22 +125,34 @@ export const POST = withErrorHandler(async (req) => {
   // Determine status
   let status = 'draft'
   if (input.active) {
-    if (startsAt > new Date()) {
-      status = 'scheduled'
-    } else {
-      status = 'active'
-    }
+    status = startsAt > new Date() ? 'scheduled' : 'active'
   }
+
+  // Clean tenantId: convert '', 'none', null → null (no business)
+  const cleanTenantId = (input.tenantId === '' || input.tenantId === 'none' || input.tenantId === null || input.tenantId === undefined)
+    ? null
+    : input.tenantId
+
+  // Clean URLs: convert '', null → null
+  const cleanImageUrl = (input.imageUrl === '' || input.imageUrl === null || input.imageUrl === undefined) ? null : input.imageUrl
+  const cleanLinkUrl = (input.linkUrl === '' || input.linkUrl === null || input.linkUrl === undefined) ? null : input.linkUrl
+
+  // Clean enum values: use defaults for empty/null
+  const cleanCtaAction = (input.ctaAction === '' || input.ctaAction === null || input.ctaAction === undefined) ? 'learn_more' : input.ctaAction
+  const cleanPlacement = (input.placement === '' || input.placement === null || input.placement === undefined) ? 'top_banner' : input.placement
+  const cleanDeviceTarget = (input.deviceTarget === '' || input.deviceTarget === null || input.deviceTarget === undefined) ? 'all' : input.deviceTarget
+  const cleanImageFit = (input.imageFit === '' || input.imageFit === null || input.imageFit === undefined) ? 'cover' : input.imageFit
+  const cleanImagePosition = (input.imagePosition === '' || input.imagePosition === null || input.imagePosition === undefined) ? 'center' : input.imagePosition
 
   const data: Record<string, unknown> = {
     title: input.title,
     description: input.description,
-    tenantId: input.tenantId || null,
-    imageUrl: input.imageUrl || null,
-    linkUrl: input.linkUrl || null,
+    tenantId: cleanTenantId,
+    imageUrl: cleanImageUrl,
+    linkUrl: cleanLinkUrl,
     ctaLabel: input.ctaLabel,
-    ctaAction: input.ctaAction,
-    placement: input.placement,
+    ctaAction: cleanCtaAction,
+    placement: cleanPlacement,
     startsAt,
     endsAt,
     active: input.active,
@@ -116,17 +160,16 @@ export const POST = withErrorHandler(async (req) => {
     isSponsored: input.isSponsored,
     sponsoredLabel: input.sponsoredLabel,
     priority: input.priority,
-    deviceTarget: input.deviceTarget,
+    deviceTarget: cleanDeviceTarget,
     targetAudience: JSON.stringify(input.targetAudience),
     maxWidth: input.maxWidth,
     maxHeight: input.maxHeight,
     minHeight: input.minHeight,
-    imageFit: input.imageFit,
-    imagePosition: input.imagePosition,
+    imageFit: cleanImageFit,
+    imagePosition: cleanImagePosition,
     theme: JSON.stringify(input.theme),
     impressionLimit: input.impressionLimit ?? null,
     perVisitorFreq: input.perVisitorFreq,
-    // Initialize analytics at 0 — never inherited from existing data
     impressions: 0,
     clicks: 0,
   }
@@ -143,9 +186,9 @@ export const POST = withErrorHandler(async (req) => {
         data: {
           title: input.title,
           description: input.description,
-          imageUrl: input.imageUrl || null,
-          linkUrl: input.linkUrl || null,
-          placement: input.placement,
+          imageUrl: cleanImageUrl,
+          linkUrl: cleanLinkUrl,
+          placement: cleanPlacement,
           startsAt,
           endsAt,
           active: input.active,
