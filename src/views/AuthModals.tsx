@@ -39,17 +39,38 @@ export function AuthModals() {
     setLoading(true)
     try {
       if (authModal === 'signup') {
-        await apiFetch('/api/auth/signup', {
+        const signupResult = await apiFetch<{
+          emailVerification?: { sent: boolean; delivered: boolean; devCode?: string; reason?: string; expiresAt: string }
+        }>('/api/auth/signup', {
           method: 'POST',
           body: JSON.stringify({ email, password, name: name || undefined, accountType }),
         })
-        pushToast({
-          type: 'success',
-          message:
-            accountType === 'BUSINESS_OWNER'
-              ? 'Account created. Let&apos;s set up your first business.'
-              : 'Welcome to OHWASIS! Browse the marketplace to discover businesses.',
-        })
+        const v = signupResult.emailVerification
+        if (v?.devCode) {
+          pushToast({
+            type: 'info',
+            message: `[DEV] Verification code: ${v.devCode} (SMTP not configured — enter this to verify your email)`,
+          })
+        } else if (v?.delivered) {
+          pushToast({
+            type: 'success',
+            message: 'Account created — check your email for a 6-digit verification code.',
+          })
+        } else if (v?.reason === 'rate_limited') {
+          pushToast({ type: 'info', message: 'Verification email already sent — check your inbox.' })
+        } else {
+          pushToast({
+            type: 'error',
+            message: `Account created, but we couldn't send the verification email (${v?.reason ?? 'unknown'}). Configure SMTP_* env vars.`,
+          })
+        }
+        // After signup, always send to a neutral view — the verification banner
+        // will appear at the top regardless of which view they're on.
+        if (accountType === 'BUSINESS_OWNER') {
+          setView('merchant')
+        } else {
+          setView('marketplace')
+        }
       } else {
         await apiFetch('/api/auth/login', {
           method: 'POST',
@@ -58,14 +79,6 @@ export function AuthModals() {
         pushToast({ type: 'success', message: 'Signed in.' })
       }
       await refreshSession()
-      // Auto-route based on account type after signup
-      if (authModal === 'signup') {
-        if (accountType === 'BUSINESS_OWNER') {
-          setView('merchant')
-        } else {
-          setView('marketplace')
-        }
-      }
       close()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Authentication failed'

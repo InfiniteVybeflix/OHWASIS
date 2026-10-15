@@ -16,6 +16,7 @@ import { Toaster as SonnerToaster } from '@/components/ui/sonner'
 import { Header, Footer } from '@/components/Header'
 import { MobileBottomNav } from '@/components/ohwasis/MobileBottomNav'
 import { PWAInstallPrompt } from '@/components/ohwasis/PWAInstallPrompt'
+import { EmailVerificationBanner } from '@/components/ohwasis/EmailVerificationBanner'
 import { CategoriesView } from '@/views/CategoriesView'
 import { ProductDetailView } from '@/views/ProductDetailView'
 import { CartView } from '@/views/CartView'
@@ -88,6 +89,7 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Header />
+      <EmailVerificationBanner />
       <main className={`flex-1 w-full ${showBottomNav ? 'pb-16 sm:pb-0' : ''}`}>
         {view === 'landing' && <LandingView />}
         {view === 'marketplace' && <MarketplaceView />}

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getRequestContext, requireTenantMembership, requireMinRole } from '@/lib/session'
+import { getRequestContext, requireTenantMembership, requireMinRole, requireVerifiedEmailAsync } from '@/lib/session'
 import { tenantScoped } from '@/lib/tenant'
 import { withErrorHandler, parseBody, queryParams } from '@/lib/api'
 import { productSchema } from '@/lib/validation/schemas'
@@ -52,6 +52,8 @@ export const GET = withErrorHandler(async (req) => {
  */
 export const POST = withErrorHandler(async (req) => {
   const ctx = await getRequestContext(req)
+  // Sensitive write — gate on email verification (platform operators exempt).
+  await requireVerifiedEmailAsync(ctx)
   const { tenant } = requireTenantMembership(ctx)
   requireMinRole(ctx, 'CATALOG_MANAGER')
   const input = await parseBody(req, productSchema)

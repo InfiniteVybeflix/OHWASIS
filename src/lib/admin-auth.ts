@@ -48,6 +48,10 @@ export async function tryAdminLogin(email: string, password: string): Promise<bo
 /**
  * Ensure the admin User row exists with the right role. Called after a
  * successful tryAdminLogin. Returns the user.
+ *
+ * Admin (PLATFORM_OPERATOR) accounts are auto-verified (emailVerified = now)
+ * — they authenticated via env-configured ADMIN_EMAIL + ADMIN_PASSWORD_HASH,
+ * which is a stronger proof-of-identity than email OTP.
  */
 export async function ensureAdminUser(email: string) {
   const adminEmail = email.toLowerCase()
@@ -62,12 +66,24 @@ export async function ensureAdminUser(email: string) {
         accountType: 'PLATFORM_OPERATOR',
         globalRole: 2,
         status: 'ACTIVE',
+        emailVerified: new Date(),
       },
     })
   } else if (user.globalRole < 2 || user.accountType !== 'PLATFORM_OPERATOR') {
     user = await prisma.user.update({
       where: { id: user.id },
-      data: { globalRole: 2, accountType: 'PLATFORM_OPERATOR', status: 'ACTIVE' },
+      data: {
+        globalRole: 2,
+        accountType: 'PLATFORM_OPERATOR',
+        status: 'ACTIVE',
+        emailVerified: user.emailVerified ?? new Date(),
+      },
+    })
+  } else if (!user.emailVerified) {
+    // Existing admin row that pre-dates the verification system — backfill.
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: new Date() },
     })
   }
   return user

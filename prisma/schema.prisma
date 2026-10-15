@@ -38,6 +38,15 @@ model User {
   // accountType is the user's primary role; memberships can still grant staff access to tenants
   accountType   AccountType   @default(CUSTOMER)
   globalRole    Int           @default(0)
+  // Email verification (v8-verification): null = unverified, datetime = verified-at.
+  // Platform operators (admin via env) are exempt — they have no User row until first
+  // login, at which point their account is auto-verified here.
+  emailVerified          DateTime?
+  verificationCode       String?
+  verificationCodeHash   String?  // scrypt hash of the 6-digit code; raw code never stored
+  verificationExpiresAt  DateTime?
+  verificationAttempts   Int       @default(0)
+  lastVerificationSentAt DateTime?
   // Customer profile (for customer-portal users — separate from per-tenant Customer records)
   avatarUrl     String?
   bio           String?

@@ -22,6 +22,13 @@ export function withErrorHandler<T extends ApiHandler>(handler: T): T {
         )
       }
       if (err instanceof AuthorizationError) {
+        const code = (err as Error & { code?: string }).code
+        if (code === 'email_verification_required') {
+          return NextResponse.json(
+            { error: 'email_verification_required', message: 'Please verify your email to continue.' },
+            { status: 403 },
+          )
+        }
         return NextResponse.json({ error: 'forbidden', message: err.message }, { status: 403 })
       }
       if (err instanceof TenantResolutionError) {
@@ -29,6 +36,15 @@ export function withErrorHandler<T extends ApiHandler>(handler: T): T {
       }
       if (err instanceof Error) {
         const name = err.name
+        // Schema-definition errors (e.g. zod v4 throws TypeError on
+        // `z.record(z.unknown())` at parse time) — surface as 400 instead
+        // of leaking as 500 internal_error so the client sees a useful error.
+        if (name === 'TypeError' && err.message.includes('_zod')) {
+          return NextResponse.json(
+            { error: 'validation_error', message: 'Schema definition error' },
+            { status: 400 },
+          )
+        }
         if (name === 'DarajaError' || name === 'AiProviderError') {
           return NextResponse.json({ error: 'provider_error', message: err.message }, { status: 502 })
         }

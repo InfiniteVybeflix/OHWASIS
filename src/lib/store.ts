@@ -37,6 +37,8 @@ export interface UserDTO {
   globalRole: number
   status: string
   accountType?: string
+  /** ISO datetime string if verified, null if unverified. */
+  emailVerified?: string | null
 }
 
 export interface TenantSummary {
@@ -63,6 +65,8 @@ export interface SessionState {
   isPlatformOperator: boolean
   isBusinessOwner: boolean
   isCustomer: boolean
+  /** True when the user must verify their email (admin is exempt). */
+  emailVerificationRequired: boolean
 }
 
 export interface ToastMsg {
@@ -120,6 +124,7 @@ const emptySession: SessionState = {
   isPlatformOperator: false,
   isBusinessOwner: false,
   isCustomer: true,
+  emailVerificationRequired: false,
 }
 
 export const useOhwasisStore = create<OhwasisState>()(

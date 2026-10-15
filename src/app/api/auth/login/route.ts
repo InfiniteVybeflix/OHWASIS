@@ -26,8 +26,15 @@ export const POST = withErrorHandler(async (req) => {
     attempts.set(ip, { count: 1, firstAt: now })
   }
 
-  // 1. Try admin login first (env-configured admin email + password)
-  const isAdmin = await tryAdminLogin(input.email, input.password)
+  // 1. Try admin login first (env-configured admin email + password).
+  //    If ADMIN_EMAIL env var is not set, tryAdminLogin throws — we treat that
+  //    as "admin auth is not configured" and skip silently.
+  let isAdmin = false
+  try {
+    isAdmin = await tryAdminLogin(input.email, input.password)
+  } catch (adminErr) {
+    console.warn('[login] admin auth skipped:', adminErr instanceof Error ? adminErr.message : adminErr)
+  }
   let user
   if (isAdmin) {
     user = await ensureAdminUser(input.email)

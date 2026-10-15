@@ -72,7 +72,10 @@ export const productSchema = z.object({
   trackStock: z.boolean().default(true),
   trackStockOnVariant: z.boolean().default(false),
   status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']).default('DRAFT'),
-  attributes: z.record(z.unknown()).default({}),
+  // zod v4 requires explicit key type for z.record — `z.record(z.unknown())` throws
+  // a TypeError at schema-definition time, which surfaces as HTTP 500 inside
+  // withErrorHandler when parseBody is called.
+  attributes: z.record(z.string(), z.unknown()).default({}),
 })
 
 export const variantSchema = z.object({
@@ -80,7 +83,7 @@ export const variantSchema = z.object({
   sku: z.string().max(64).optional(),
   priceDelta: z.number().min(-10_000_000).max(10_000_000).default(0),
   stock: z.number().int().min(0).max(10_000_000).default(0),
-  options: z.record(z.unknown()).default({}),
+  options: z.record(z.string(), z.unknown()).default({}),
   weightGrams: z.number().int().min(0).max(10_000_000).optional(),
 })
 
@@ -168,7 +171,7 @@ export const pageSchema = z.object({
   title: z.string().min(1).max(200),
   body: z.string().max(100_000),
   status: z.enum(['DRAFT', 'PUBLISHED', 'UNPUBLISHED']).default('DRAFT'),
-  seo: z.record(z.unknown()).default({}),
+  seo: z.record(z.string(), z.unknown()).default({}),
 })
 
 export const deliveryZoneSchema = z.object({

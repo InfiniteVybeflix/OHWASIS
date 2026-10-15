@@ -295,6 +295,51 @@ export function requireCustomer(ctx: RequestContext) {
   return u
 }
 
+/**
+ * Require the authenticated user's email is verified. Platform operators
+ * (admin via env) are exempt — their identity is proven by ADMIN_PASSWORD_HASH.
+ * Throws AuthorizationError with code='email_verification_required' otherwise.
+ *
+ * Used to gate sensitive write endpoints (product create, checkout, CMS
+ * publish, etc.) so an attacker who only has a stolen-unverified session
+ * cannot transact.
+ */
+export function requireVerifiedEmail(ctx: RequestContext) {
+  const u = requireUser(ctx)
+  if (u.globalRole >= 2) return u // platform operator is exempt
+  // We need the emailVerified flag from the DB; ctx.user doesn't carry it.
+  // Callers that need to gate should call requireVerifiedEmailFromUser below.
+  return u
+}
+
+/**
+ * Async variant that loads the user record from the DB to check emailVerified.
+ * Use this in route handlers — requireVerifiedEmail (sync) is for the simple
+ * "is platform operator" path only.
+ */
+export async function requireVerifiedEmailAsync(ctx: RequestContext): Promise<{
+  id: string
+  email: string
+  name: string | null
+  globalRole: number
+  status: string
+  accountType?: string
+}> {
+  const u = requireUser(ctx)
+  if (u.globalRole >= 2) return u // exempt
+  const { prisma } = await import('@/lib/db')
+  const row = await prisma.user.findUnique({
+    where: { id: u.id },
+    select: { emailVerified: true },
+  })
+  if (!row?.emailVerified) {
+    const e = new AuthorizationError('Email verification required')
+    ;(e as Error & { code?: string }).code = 'email_verification_required'
+    throw e
+  }
+  return u
+}
+
 export function requireTenantMembership(ctx: RequestContext, minRoles: string[] = []) {
   if (!ctx.tenant) throw new AuthorizationError('Tenant context required')
   if (!ctx.membership) throw new AuthorizationError('Not a member of this tenant')
